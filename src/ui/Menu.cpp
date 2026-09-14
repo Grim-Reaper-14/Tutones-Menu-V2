@@ -4,6 +4,23 @@
 
 namespace TutonesV2::UI
 {
+    namespace
+    {
+        const char* PageName(Menu::Page page) noexcept
+        {
+            switch (page)
+            {
+            case Menu::Page::Self: return "Self";
+            case Menu::Page::Vehicle: return "Vehicle";
+            case Menu::Page::Teleport: return "Teleport";
+            case Menu::Page::World: return "World";
+            case Menu::Page::Recovery: return "Recovery";
+            case Menu::Page::Settings: return "Settings";
+            }
+            return "Self";
+        }
+    }
+
     Menu& Menu::Get() noexcept
     {
         static Menu instance;
@@ -51,27 +68,35 @@ namespace TutonesV2::UI
         ImGui::BeginChild("##navigation", ImVec2(180.0f, 0.0f), true);
         ImGui::TextDisabled("MAIN");
         ImGui::Spacing();
-        ImGui::Selectable("Self", true);
-        ImGui::Selectable("Vehicle", false);
-        ImGui::Selectable("Teleport", false);
-        ImGui::Selectable("World", false);
-        ImGui::Selectable("Recovery", false);
-        ImGui::Selectable("Settings", false);
+
+        if (ImGui::Selectable("Self", m_Page == Page::Self))
+            m_Page = Page::Self;
+        if (ImGui::Selectable("Vehicle", m_Page == Page::Vehicle))
+            m_Page = Page::Vehicle;
+        if (ImGui::Selectable("Teleport", m_Page == Page::Teleport))
+            m_Page = Page::Teleport;
+        if (ImGui::Selectable("World", m_Page == Page::World))
+            m_Page = Page::World;
+        if (ImGui::Selectable("Recovery", m_Page == Page::Recovery))
+            m_Page = Page::Recovery;
+        if (ImGui::Selectable("Settings", m_Page == Page::Settings))
+            m_Page = Page::Settings;
+
         ImGui::EndChild();
 
         ImGui::SameLine();
 
         ImGui::BeginChild("##content", ImVec2(0.0f, 0.0f), true);
-        ImGui::TextUnformatted("Self");
+        ImGui::TextUnformatted(PageName(m_Page));
         ImGui::Separator();
         ImGui::Spacing();
         ImGui::TextWrapped(
-            "Visible-menu verification build. No game features, natives, globals, "
+            "Visible-menu verification build. Navigation is active, but no game features, natives, globals, "
             "pattern scans, or backend feature ticks are running from this window.");
         ImGui::Spacing();
         ImGui::BulletText("DX12 overlay: active");
-        ImGui::BulletText("Menu toggle: F5");
-        ImGui::BulletText("Render path: UI only");
+        ImGui::BulletText("Mouse input: captured while menu is open");
+        ImGui::BulletText("Selected page: %s", PageName(m_Page));
         ImGui::BulletText("Feature calls: disabled for stability test");
         ImGui::Spacing();
         ImGui::TextDisabled("Press F5 to close the menu.");
