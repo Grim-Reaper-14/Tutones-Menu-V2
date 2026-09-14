@@ -7,35 +7,29 @@
 #include <imgui_impl_dx12.h>
 #include <imgui_impl_win32.h>
 
-extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
-
 namespace TutonesV2::Render
 {
     namespace
     {
-        LRESULT CALLBACK OverlayWindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+        bool IsPrimaryWindowCandidate(HWND window) noexcept
         {
-            return Renderer::Get().HandleWindowMessage(window, message, wParam, lParam);
-        }
+            if (!window || !::IsWindow(window) || !::IsWindowVisible(window))
+                return false;
+            if (::GetAncestor(window, GA_ROOT) != window)
+                return false;
 
-        bool IsMouseMessage(UINT message) noexcept
-        {
-            return (message >= WM_MOUSEFIRST && message <= WM_MOUSELAST)
-                || message == WM_NCMOUSEMOVE
-                || message == WM_NCLBUTTONDOWN
-                || message == WM_NCLBUTTONUP
-                || message == WM_NCRBUTTONDOWN
-                || message == WM_NCRBUTTONUP;
-        }
+            DWORD processId{};
+            ::GetWindowThreadProcessId(window, &processId);
+            if (processId != ::GetCurrentProcessId())
+                return false;
 
-        bool IsKeyboardMessage(UINT message) noexcept
-        {
-            return message == WM_KEYDOWN
-                || message == WM_KEYUP
-                || message == WM_SYSKEYDOWN
-                || message == WM_SYSKEYUP
-                || message == WM_CHAR
-                || message == WM_SYSCHAR;
+            RECT client{};
+            if (!::GetClientRect(window, &client))
+                return false;
+
+            const LONG width = client.right - client.left;
+            const LONG height = client.bottom - client.top;
+            return width >= 640 && height >= 360;
         }
     }
 
@@ -51,7 +45,7 @@ namespace TutonesV2::Render
         if (!m_Initialized.compare_exchange_strong(expected, true))
             return true;
 
-        Core::Logger::Get().Info("render", "Renderer shell initialized; waiting for GTA DX12 swap chain");
+        Core::Logger::Get().Info("render", "Renderer shell initialized; waiting for GTA primary DX12 swap chain");
         return true;
     }
 
@@ -62,12 +56,11 @@ namespace TutonesV2::Render
 
         {
             std::scoped_lock lock(m_StateMutex);
-            ResetSwapChainState(true);
+            WaitForOverlayIdle();
+            ResetSwapChainState();
         }
 
-        if (ID3D12CommandQueue* commandQueue = m_CommandQueue.exchange(nullptr))
-            commandQueue->Release();
-
+        ReleasePrimarySelection();
         Core::Logger::Get().Info("render", "Renderer stopped");
     }
 
@@ -76,110 +69,181 @@ namespace TutonesV2::Render
         return m_Initialized.load();
     }
 
+    bool Renderer::SelectPrimarySwapChain(IDXGISwapChain* swapChain) noexcept
+    {
+        if (!swapChain)
+            return false;
+
+        if (IDXGISwapChain* current = m_PrimarySwapChain.load(std::memory_order_acquire))
+            return current == swapChain;
+
+        DXGI_SWAP_CHAIN_DESC description{};
+        if (FAILED(swapChain->GetDesc(&description)) || !IsPrimaryWindowCandidate(description.OutputWindow))
+            return false;
+
+        Microsoft::WRL::ComPtr<ID3D12Device> device;
+        if (FAILED(swapChain->GetDevice(IID_PPV_ARGS(&device))) || !device)
+            return false;
+
+        IDXGISwapChain* expected = nullptr;
+        swapChain->AddRef();
+        if (!m_PrimarySwapChain.compare_exchange_strong(
+                expected,
+                swapChain,
+                std::memory_order_acq_rel,
+                std::memory_order_acquire))
+        {
+            swapChain->Release();
+            return expected == swapChain;
+        }
+
+        ID3D12Device* retainedDevice = device.Detach();
+        m_PrimaryDevice.store(retainedDevice, std::memory_order_release);
+        Core::Logger::Get().Info("render", "Primary GTA DX12 swap chain pinned; waiting for matching DIRECT queue");
+        return true;
+    }
+
+    bool Renderer::QueueMatchesPrimaryDevice(ID3D12CommandQueue* commandQueue) const noexcept
+    {
+        ID3D12Device* primaryDevice = m_PrimaryDevice.load(std::memory_order_acquire);
+        if (!commandQueue || !primaryDevice)
+            return false;
+
+        Microsoft::WRL::ComPtr<ID3D12Device> queueDevice;
+        if (FAILED(commandQueue->GetDevice(IID_PPV_ARGS(&queueDevice))) || !queueDevice)
+            return false;
+
+        Microsoft::WRL::ComPtr<IUnknown> primaryIdentity;
+        Microsoft::WRL::ComPtr<IUnknown> queueIdentity;
+        if (FAILED(primaryDevice->QueryInterface(IID_PPV_ARGS(&primaryIdentity)))
+            || FAILED(queueDevice->QueryInterface(IID_PPV_ARGS(&queueIdentity))))
+        {
+            return false;
+        }
+
+        return primaryIdentity.Get() == queueIdentity.Get();
+    }
+
     void Renderer::CaptureCommandQueue(ID3D12CommandQueue* commandQueue) noexcept
     {
-        if (!m_Initialized.load() || !commandQueue)
+        if (!m_Initialized.load(std::memory_order_acquire) || !commandQueue)
             return;
 
+        if (m_CommandQueue.load(std::memory_order_acquire))
+            return;
+
+        if (!m_PrimarySwapChain.load(std::memory_order_acquire)
+            || !m_PrimaryDevice.load(std::memory_order_acquire))
+        {
+            return;
+        }
+
         if (commandQueue->GetDesc().Type != D3D12_COMMAND_LIST_TYPE_DIRECT)
+            return;
+        if (!QueueMatchesPrimaryDevice(commandQueue))
             return;
 
         ID3D12CommandQueue* expected = nullptr;
         commandQueue->AddRef();
-        if (!m_CommandQueue.compare_exchange_strong(expected, commandQueue))
+        if (!m_CommandQueue.compare_exchange_strong(
+                expected,
+                commandQueue,
+                std::memory_order_acq_rel,
+                std::memory_order_acquire))
         {
             commandQueue->Release();
             return;
         }
 
-        Core::Logger::Get().Info("render", "Captured GTA direct command queue");
+        Core::Logger::Get().Info("render", "Captured matching GTA DIRECT command queue after primary swap-chain selection");
     }
 
     void Renderer::OnPresent(IDXGISwapChain* swapChain) noexcept
     {
-        if (!m_Initialized.load() || !swapChain)
+        if (!m_Initialized.load(std::memory_order_acquire) || !swapChain)
+            return;
+        if (!SelectPrimarySwapChain(swapChain))
             return;
 
-        if (!m_RenderReady.load(std::memory_order_acquire))
+        const bool f5Down = (::GetAsyncKeyState(VK_F5) & 0x8000) != 0;
+        const bool wasDown = m_F5Down.exchange(f5Down, std::memory_order_acq_rel);
+        if (f5Down && !wasDown)
         {
-            if (!m_CommandQueue.load())
-                return;
-
-            std::scoped_lock lock(m_StateMutex);
-            if (!m_RenderReady.load(std::memory_order_relaxed) && !InitializeSwapChain(swapChain))
-                return;
+            UI::Menu::Get().Toggle();
+            Core::Logger::Get().Info(
+                "render",
+                UI::Menu::Get().IsOpen() ? "F5 opened V2 menu state" : "F5 closed V2 menu state");
         }
 
         if (!UI::Menu::Get().IsOpen())
             return;
+        if (!m_CommandQueue.load(std::memory_order_acquire))
+            return;
+
+        if (!m_RenderReady.load(std::memory_order_acquire))
+        {
+            std::scoped_lock lock(m_StateMutex);
+            if (!m_RenderReady.load(std::memory_order_relaxed) && !InitializeSwapChain(swapChain))
+                return;
+        }
 
         RenderMenuFrame();
     }
 
     void Renderer::OnBeforeResize(IDXGISwapChain* swapChain) noexcept
     {
-        if (!m_Initialized.load() || !swapChain)
+        if (!m_Initialized.load(std::memory_order_acquire) || !swapChain)
+            return;
+        if (m_PrimarySwapChain.load(std::memory_order_acquire) != swapChain)
             return;
 
         std::scoped_lock lock(m_StateMutex);
         if (m_SwapChain && static_cast<IDXGISwapChain*>(m_SwapChain.Get()) == swapChain)
         {
-            Core::Logger::Get().Info("render", "DX12 swap chain resize detected; releasing overlay resources");
-            ResetSwapChainState(true);
+            Core::Logger::Get().Info("render", "Primary DX12 swap chain resize detected; draining overlay work");
+            WaitForOverlayIdle();
+            ResetSwapChainState();
         }
-    }
-
-    LRESULT Renderer::HandleWindowMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam) noexcept
-    {
-        if (message == WM_KEYUP && wParam == VK_F5)
-        {
-            UI::Menu::Get().Toggle();
-            return 0;
-        }
-
-        if (m_ImGuiReady && UI::Menu::Get().IsOpen())
-        {
-            const LRESULT handled = ImGui_ImplWin32_WndProcHandler(window, message, wParam, lParam);
-            ImGuiIO& io = ImGui::GetIO();
-            if (handled != 0
-                || (IsMouseMessage(message) && io.WantCaptureMouse)
-                || (IsKeyboardMessage(message) && io.WantCaptureKeyboard))
-            {
-                return 1;
-            }
-        }
-
-        if (m_OriginalWindowProc)
-            return ::CallWindowProcW(m_OriginalWindowProc, window, message, wParam, lParam);
-
-        return ::DefWindowProcW(window, message, wParam, lParam);
     }
 
     bool Renderer::InitializeSwapChain(IDXGISwapChain* swapChain) noexcept
     {
+        if (m_PrimarySwapChain.load(std::memory_order_acquire) != swapChain)
+            return false;
+
+        ID3D12CommandQueue* commandQueue = m_CommandQueue.load(std::memory_order_acquire);
+        if (!commandQueue || !QueueMatchesPrimaryDevice(commandQueue))
+            return false;
+
         Microsoft::WRL::ComPtr<IDXGISwapChain3> swapChain3;
         if (FAILED(swapChain->QueryInterface(IID_PPV_ARGS(&swapChain3))))
             return false;
 
         DXGI_SWAP_CHAIN_DESC description{};
-        if (FAILED(swapChain3->GetDesc(&description)) || !description.OutputWindow || description.BufferCount == 0)
+        if (FAILED(swapChain3->GetDesc(&description))
+            || !IsPrimaryWindowCandidate(description.OutputWindow)
+            || description.BufferCount == 0)
+        {
             return false;
+        }
 
         Microsoft::WRL::ComPtr<ID3D12Device> device;
-        if (FAILED(swapChain3->GetDevice(IID_PPV_ARGS(&device))))
+        if (FAILED(swapChain3->GetDevice(IID_PPV_ARGS(&device))) || !device)
             return false;
 
         m_SwapChain = swapChain3;
         m_Device = device;
         m_Window = description.OutputWindow;
-        m_BackBufferFormat = description.BufferDesc.Format;
+        m_BackBufferFormat = description.BufferDesc.Format == DXGI_FORMAT_UNKNOWN
+            ? DXGI_FORMAT_R8G8B8A8_UNORM
+            : description.BufferDesc.Format;
 
         D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDescription{};
         rtvHeapDescription.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
         rtvHeapDescription.NumDescriptors = description.BufferCount;
         if (FAILED(m_Device->CreateDescriptorHeap(&rtvHeapDescription, IID_PPV_ARGS(&m_RtvHeap))))
         {
-            ResetSwapChainState(false);
+            ResetSwapChainState();
             return false;
         }
 
@@ -189,7 +253,7 @@ namespace TutonesV2::Render
         srvHeapDescription.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         if (FAILED(m_Device->CreateDescriptorHeap(&srvHeapDescription, IID_PPV_ARGS(&m_SrvHeap))))
         {
-            ResetSwapChainState(false);
+            ResetSwapChainState();
             return false;
         }
 
@@ -204,7 +268,7 @@ namespace TutonesV2::Render
             if (FAILED(m_Device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&frame.CommandAllocator)))
                 || FAILED(m_SwapChain->GetBuffer(index, IID_PPV_ARGS(&frame.BackBuffer))))
             {
-                ResetSwapChainState(false);
+                ResetSwapChainState();
                 return false;
             }
 
@@ -220,27 +284,40 @@ namespace TutonesV2::Render
                 nullptr,
                 IID_PPV_ARGS(&m_CommandList))))
         {
-            ResetSwapChainState(false);
+            ResetSwapChainState();
             return false;
         }
-        static_cast<void>(m_CommandList->Close());
+        if (FAILED(m_CommandList->Close()))
+        {
+            ResetSwapChainState();
+            return false;
+        }
 
         if (FAILED(m_Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_Fence))))
         {
-            ResetSwapChainState(false);
+            ResetSwapChainState();
+            return false;
+        }
+
+        m_FenceEvent = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        if (!m_FenceEvent)
+        {
+            ResetSwapChainState();
             return false;
         }
 
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
         ImGuiIO& io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.LogFilename = nullptr;
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         ImGui::StyleColorsDark();
 
         if (!ImGui_ImplWin32_Init(m_Window))
         {
             ImGui::DestroyContext();
-            ResetSwapChainState(false);
+            ResetSwapChainState();
             return false;
         }
 
@@ -256,26 +333,15 @@ namespace TutonesV2::Render
         {
             ImGui_ImplWin32_Shutdown();
             ImGui::DestroyContext();
-            ResetSwapChainState(false);
+            ResetSwapChainState();
             return false;
         }
 
         m_ImGuiReady = true;
-
-        ::SetLastError(0);
-        const LONG_PTR previousWindowProc = ::SetWindowLongPtrW(
-            m_Window,
-            GWLP_WNDPROC,
-            reinterpret_cast<LONG_PTR>(&OverlayWindowProc));
-        if (previousWindowProc == 0 && ::GetLastError() != 0)
-        {
-            ResetSwapChainState(false);
-            return false;
-        }
-
-        m_OriginalWindowProc = reinterpret_cast<WNDPROC>(previousWindowProc);
         m_RenderReady.store(true, std::memory_order_release);
-        Core::Logger::Get().Info("render", "GTA DX12/ImGui overlay initialized; F5 toggles menu");
+        Core::Logger::Get().Info(
+            "render",
+            "GTA DX12/ImGui overlay initialized on pinned swap chain; no WndProc subclass installed");
         return true;
     }
 
@@ -290,7 +356,7 @@ namespace TutonesV2::Render
             return;
         }
 
-        ID3D12CommandQueue* commandQueue = m_CommandQueue.load();
+        ID3D12CommandQueue* commandQueue = m_CommandQueue.load(std::memory_order_acquire);
         if (!commandQueue)
             return;
 
@@ -347,21 +413,26 @@ namespace TutonesV2::Render
             frame.FenceValue = fenceValue;
     }
 
-    void Renderer::ResetSwapChainState(bool restoreWindowProc) noexcept
+    void Renderer::WaitForOverlayIdle() noexcept
+    {
+        ID3D12CommandQueue* commandQueue = m_CommandQueue.load(std::memory_order_acquire);
+        if (!commandQueue || !m_Fence || !m_FenceEvent)
+            return;
+
+        const std::uint64_t fenceValue = ++m_NextFenceValue;
+        if (FAILED(commandQueue->Signal(m_Fence.Get(), fenceValue)))
+            return;
+        if (m_Fence->GetCompletedValue() >= fenceValue)
+            return;
+        if (FAILED(m_Fence->SetEventOnCompletion(fenceValue, m_FenceEvent)))
+            return;
+
+        static_cast<void>(::WaitForSingleObject(m_FenceEvent, INFINITE));
+    }
+
+    void Renderer::ResetSwapChainState() noexcept
     {
         m_RenderReady.store(false, std::memory_order_release);
-
-        if (restoreWindowProc && m_Window && m_OriginalWindowProc)
-        {
-            const auto currentWindowProc = reinterpret_cast<WNDPROC>(::GetWindowLongPtrW(m_Window, GWLP_WNDPROC));
-            if (currentWindowProc == &OverlayWindowProc)
-            {
-                ::SetWindowLongPtrW(
-                    m_Window,
-                    GWLP_WNDPROC,
-                    reinterpret_cast<LONG_PTR>(m_OriginalWindowProc));
-            }
-        }
 
         if (m_ImGuiReady)
         {
@@ -381,10 +452,27 @@ namespace TutonesV2::Render
         m_Device.Reset();
         m_SwapChain.Reset();
 
+        if (m_FenceEvent)
+        {
+            ::CloseHandle(m_FenceEvent);
+            m_FenceEvent = nullptr;
+        }
+
         m_Window = nullptr;
-        m_OriginalWindowProc = nullptr;
         m_BackBufferFormat = DXGI_FORMAT_UNKNOWN;
         m_RtvDescriptorSize = 0;
         m_NextFenceValue = 0;
+    }
+
+    void Renderer::ReleasePrimarySelection() noexcept
+    {
+        if (ID3D12CommandQueue* commandQueue = m_CommandQueue.exchange(nullptr, std::memory_order_acq_rel))
+            commandQueue->Release();
+        if (ID3D12Device* device = m_PrimaryDevice.exchange(nullptr, std::memory_order_acq_rel))
+            device->Release();
+        if (IDXGISwapChain* swapChain = m_PrimarySwapChain.exchange(nullptr, std::memory_order_acq_rel))
+            swapChain->Release();
+
+        m_F5Down.store(false, std::memory_order_release);
     }
 }

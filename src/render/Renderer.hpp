@@ -24,7 +24,6 @@ namespace TutonesV2::Render
         void CaptureCommandQueue(ID3D12CommandQueue* commandQueue) noexcept;
         void OnPresent(IDXGISwapChain* swapChain) noexcept;
         void OnBeforeResize(IDXGISwapChain* swapChain) noexcept;
-        LRESULT HandleWindowMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam) noexcept;
 
     private:
         struct FrameContext final
@@ -35,12 +34,19 @@ namespace TutonesV2::Render
             std::uint64_t FenceValue{};
         };
 
+        bool SelectPrimarySwapChain(IDXGISwapChain* swapChain) noexcept;
+        bool QueueMatchesPrimaryDevice(ID3D12CommandQueue* commandQueue) const noexcept;
         bool InitializeSwapChain(IDXGISwapChain* swapChain) noexcept;
         void RenderMenuFrame() noexcept;
-        void ResetSwapChainState(bool restoreWindowProc) noexcept;
+        void WaitForOverlayIdle() noexcept;
+        void ResetSwapChainState() noexcept;
+        void ReleasePrimarySelection() noexcept;
 
         std::atomic_bool m_Initialized{};
         std::atomic_bool m_RenderReady{};
+        std::atomic_bool m_F5Down{};
+        std::atomic<IDXGISwapChain*> m_PrimarySwapChain{};
+        std::atomic<ID3D12Device*> m_PrimaryDevice{};
         std::atomic<ID3D12CommandQueue*> m_CommandQueue{};
         std::mutex m_StateMutex;
 
@@ -53,7 +59,7 @@ namespace TutonesV2::Render
         std::vector<FrameContext> m_Frames;
 
         HWND m_Window{};
-        WNDPROC m_OriginalWindowProc{};
+        HANDLE m_FenceEvent{};
         DXGI_FORMAT m_BackBufferFormat{DXGI_FORMAT_UNKNOWN};
         UINT m_RtvDescriptorSize{};
         std::uint64_t m_NextFenceValue{};
