@@ -1,4 +1,5 @@
 #include "GameRuntime.hpp"
+#include "GameProcess.hpp"
 #include "../core/Logger.hpp"
 
 namespace TutonesV2::Game
@@ -15,7 +16,14 @@ namespace TutonesV2::Game
         if (!m_Initialized.compare_exchange_strong(expected, true))
             return true;
 
-        Core::Logger::Get().Info("game", "Game runtime initialized (clean V2 shell)");
+        if (!GameProcess::IsEnhancedHost())
+        {
+            Core::Logger::Get().Error("game", "Tutones Menu V2 must be loaded inside GTA5_Enhanced.exe");
+            m_Initialized.store(false);
+            return false;
+        }
+
+        Core::Logger::Get().Info("game", "GTA5_Enhanced.exe detected in-process");
         return true;
     }
 
