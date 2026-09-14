@@ -8,9 +8,22 @@ namespace TutonesV2::UI
         return instance;
     }
 
+    void Menu::Toggle() noexcept
+    {
+        m_Open.store(!m_Open.load());
+    }
+
+    void Menu::SetOpen(bool open) noexcept
+    {
+        m_Open.store(open);
+    }
+
+    bool Menu::IsOpen() const noexcept
+    {
+        return m_Open.load();
+    }
+
     void Menu::Render() noexcept
     {
-        // Intentionally empty in the clean base.
-        // UI work is added only after the DX12 lifecycle is verified stable.
     }
 }
