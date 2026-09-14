@@ -4,23 +4,6 @@
 
 namespace TutonesV2::UI
 {
-    namespace
-    {
-        const char* PageName(Menu::Page page) noexcept
-        {
-            switch (page)
-            {
-            case Menu::Page::Self: return "Self";
-            case Menu::Page::Vehicle: return "Vehicle";
-            case Menu::Page::Teleport: return "Teleport";
-            case Menu::Page::World: return "World";
-            case Menu::Page::Recovery: return "Recovery";
-            case Menu::Page::Settings: return "Settings";
-            }
-            return "Self";
-        }
-    }
-
     Menu& Menu::Get() noexcept
     {
         static Menu instance;
@@ -46,6 +29,20 @@ namespace TutonesV2::UI
     {
         if (!IsOpen())
             return;
+
+        const auto pageName = [](Page page) noexcept -> const char*
+        {
+            switch (page)
+            {
+            case Page::Self: return "Self";
+            case Page::Vehicle: return "Vehicle";
+            case Page::Teleport: return "Teleport";
+            case Page::World: return "World";
+            case Page::Recovery: return "Recovery";
+            case Page::Settings: return "Settings";
+            }
+            return "Self";
+        };
 
         ImGui::SetNextWindowSize(ImVec2(720.0f, 460.0f), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowPos(ImVec2(80.0f, 80.0f), ImGuiCond_FirstUseEver);
@@ -87,7 +84,7 @@ namespace TutonesV2::UI
         ImGui::SameLine();
 
         ImGui::BeginChild("##content", ImVec2(0.0f, 0.0f), true);
-        ImGui::TextUnformatted(PageName(m_Page));
+        ImGui::TextUnformatted(pageName(m_Page));
         ImGui::Separator();
         ImGui::Spacing();
         ImGui::TextWrapped(
@@ -96,7 +93,7 @@ namespace TutonesV2::UI
         ImGui::Spacing();
         ImGui::BulletText("DX12 overlay: active");
         ImGui::BulletText("Mouse input: captured while menu is open");
-        ImGui::BulletText("Selected page: %s", PageName(m_Page));
+        ImGui::BulletText("Selected page: %s", pageName(m_Page));
         ImGui::BulletText("Feature calls: disabled for stability test");
         ImGui::Spacing();
         ImGui::TextDisabled("Press F5 to close the menu.");
