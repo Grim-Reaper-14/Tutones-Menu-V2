@@ -15,6 +15,17 @@ namespace TutonesV2::UI
         void Render() noexcept;
 
     private:
+        enum class Page
+        {
+            Self,
+            Vehicle,
+            Teleport,
+            World,
+            Recovery,
+            Settings,
+        };
+
         std::atomic_bool m_Open{};
+        Page m_Page{Page::Self};
     };
 }
