@@ -1,0 +1,152 @@
+#pragma once
+
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <type_traits>
+#include <utility>
+
+namespace TutonesV2::Game::Native
+{
+    struct NativeVector3 final
+    {
+        constexpr NativeVector3() noexcept = default;
+        constexpr NativeVector3(float xValue, float yValue, float zValue) noexcept
+            : x(xValue), y(yValue), z(zValue)
+        {
+        }
+
+        constexpr NativeVector3(float xValue, float yValue, float zValue, float) noexcept
+            : x(xValue), y(yValue), z(zValue)
+        {
+        }
+
+        alignas(8) float x{};
+        alignas(8) float y{};
+        alignas(8) float z{};
+    };
+
+    static_assert(sizeof(NativeVector3) == 0x18);
+    static_assert(std::is_trivially_copyable_v<NativeVector3>);
+
+    struct alignas(16) NativeVectorRefSource final
+    {
+        float x{};
+        float y{};
+        float z{};
+        float pad{};
+    };
+
+    static_assert(sizeof(NativeVectorRefSource) == 0x10);
+
+    class NativeCallContext
+    {
+    public:
+        void Reset() noexcept
+        {
+            m_ArgCount = 0;
+            m_NumVectorRefs = 0;
+        }
+
+        template<typename T>
+        bool PushArg(T value) noexcept
+        {
+            using Value = std::remove_cv_t<std::remove_reference_t<T>>;
+            static_assert(std::is_trivially_copyable_v<Value>);
+            static_assert(sizeof(Value) <= sizeof(std::uint64_t));
+
+            if (!m_Args || m_ArgCount >= 40)
+                return false;
+
+            std::uint64_t slot{};
+            std::memcpy(&slot, &value, sizeof(Value));
+            reinterpret_cast<std::uint64_t*>(m_Args)[m_ArgCount++] = slot;
+            return true;
+        }
+
+        template<typename T>
+        [[nodiscard]] T GetArg(std::size_t index) const noexcept
+        {
+            using Value = std::remove_cv_t<std::remove_reference_t<T>>;
+            static_assert(std::is_trivially_copyable_v<Value>);
+            static_assert(sizeof(Value) <= sizeof(std::uint64_t));
+
+            Value value{};
+            if (!m_Args || index >= m_ArgCount)
+                return value;
+
+            const auto* slot = &reinterpret_cast<const std::uint64_t*>(m_Args)[index];
+            std::memcpy(&value, slot, sizeof(Value));
+            return value;
+        }
+
+        template<typename T>
+        void SetReturnValue(T value) noexcept
+        {
+            using Value = std::remove_cv_t<std::remove_reference_t<T>>;
+            static_assert(std::is_trivially_copyable_v<Value>);
+            static_assert(sizeof(Value) <= sizeof(NativeVector3));
+
+            if (m_ReturnValue)
+                std::memcpy(m_ReturnValue, &value, sizeof(Value));
+        }
+
+        template<typename T>
+        [[nodiscard]] T GetReturnValue() const noexcept
+        {
+            using Value = std::remove_cv_t<std::remove_reference_t<T>>;
+            static_assert(std::is_trivially_copyable_v<Value>);
+            static_assert(sizeof(Value) <= sizeof(NativeVector3));
+
+            Value value{};
+            if (m_ReturnValue)
+                std::memcpy(&value, m_ReturnValue, sizeof(Value));
+            return value;
+        }
+
+        void FixVectors() noexcept
+        {
+            const auto count = std::clamp(m_NumVectorRefs, 0, 4);
+            for (int i = 0; i < count; ++i)
+            {
+                if (!m_VectorRefTargets[i])
+                    continue;
+
+                m_VectorRefTargets[i]->x = m_VectorRefSources[i].x;
+                m_VectorRefTargets[i]->y = m_VectorRefSources[i].y;
+                m_VectorRefTargets[i]->z = m_VectorRefSources[i].z;
+            }
+            m_NumVectorRefs = 0;
+        }
+
+    protected:
+        void* m_ReturnValue{};
+        std::uint32_t m_ArgCount{};
+        void* m_Args{};
+        std::int32_t m_NumVectorRefs{};
+        NativeVector3* m_VectorRefTargets[4]{};
+        NativeVectorRefSource m_VectorRefSources[4]{};
+    };
+
+    static_assert(sizeof(NativeCallContext) == 0x80);
+
+    using NativeHash = std::uint64_t;
+    using NativeHandler = void(*)(NativeCallContext* context);
+
+    class CallContext final : public NativeCallContext
+    {
+    public:
+        CallContext() noexcept
+        {
+            m_ReturnValue = m_ReturnStack.data();
+            m_Args = m_ArgStack.data();
+            Reset();
+        }
+
+    private:
+        std::array<std::uint64_t, 10> m_ReturnStack{};
+        std::array<std::uint64_t, 40> m_ArgStack{};
+    };
+}
