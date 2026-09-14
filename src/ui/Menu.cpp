@@ -1,5 +1,8 @@
 #include "Menu.hpp"
 
+#include "MenuTheme.hpp"
+#include "PageRenderer.hpp"
+
 #include <imgui.h>
 
 namespace TutonesV2::UI
@@ -30,22 +33,12 @@ namespace TutonesV2::UI
         if (!IsOpen())
             return;
 
-        const auto pageName = [](Page page) noexcept -> const char*
-        {
-            switch (page)
-            {
-            case Page::Self: return "Self";
-            case Page::Vehicle: return "Vehicle";
-            case Page::Teleport: return "Teleport";
-            case Page::World: return "World";
-            case Page::Recovery: return "Recovery";
-            case Page::Settings: return "Settings";
-            }
-            return "Self";
-        };
+        auto& theme = MenuTheme::Get();
+        theme.Apply();
 
-        ImGui::SetNextWindowSize(ImVec2(720.0f, 460.0f), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(780.0f, 500.0f), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowPos(ImVec2(80.0f, 80.0f), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowBgAlpha(theme.Opacity());
 
         constexpr ImGuiWindowFlags flags =
             ImGuiWindowFlags_NoCollapse |
@@ -57,48 +50,49 @@ namespace TutonesV2::UI
             return;
         }
 
-        ImGui::TextUnformatted("Tutones Menu V2");
+        ImGui::TextUnformatted("TUTONES MENU V2");
         ImGui::SameLine();
-        ImGui::TextDisabled("DX12 stability shell");
+        ImGui::TextDisabled("GTA V Enhanced / DX12");
         ImGui::Separator();
 
-        ImGui::BeginChild("##navigation", ImVec2(180.0f, 0.0f), true);
+        ImGui::BeginChild("##navigation", ImVec2(190.0f, 0.0f), true);
         ImGui::TextDisabled("MAIN");
         ImGui::Spacing();
 
-        if (ImGui::Selectable("Self", m_Page == Page::Self))
-            m_Page = Page::Self;
-        if (ImGui::Selectable("Vehicle", m_Page == Page::Vehicle))
-            m_Page = Page::Vehicle;
-        if (ImGui::Selectable("Teleport", m_Page == Page::Teleport))
-            m_Page = Page::Teleport;
-        if (ImGui::Selectable("World", m_Page == Page::World))
-            m_Page = Page::World;
-        if (ImGui::Selectable("Recovery", m_Page == Page::Recovery))
-            m_Page = Page::Recovery;
-        if (ImGui::Selectable("Settings", m_Page == Page::Settings))
-            m_Page = Page::Settings;
+        for (const auto& descriptor : MenuPages)
+        {
+            if (ImGui::Selectable(descriptor.Label, m_Page == descriptor.Page))
+                m_Page = descriptor.Page;
+        }
 
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextDisabled("F5  Toggle menu");
+        ImGui::TextDisabled("Mouse  UI control");
         ImGui::EndChild();
 
         ImGui::SameLine();
 
         ImGui::BeginChild("##content", ImVec2(0.0f, 0.0f), true);
-        ImGui::TextUnformatted(pageName(m_Page));
+        ImGui::TextUnformatted(MenuPageName(m_Page));
+        ImGui::SameLine();
+        ImGui::TextDisabled("frontend");
         ImGui::Separator();
-        ImGui::Spacing();
-        ImGui::TextWrapped(
-            "Visible-menu verification build. Navigation is active, but no game features, natives, globals, "
-            "pattern scans, or backend feature ticks are running from this window.");
-        ImGui::Spacing();
-        ImGui::BulletText("DX12 overlay: active");
-        ImGui::BulletText("Mouse input: captured while menu is open");
-        ImGui::BulletText("Selected page: %s", pageName(m_Page));
-        ImGui::BulletText("Feature calls: disabled for stability test");
-        ImGui::Spacing();
-        ImGui::TextDisabled("Press F5 to close the menu.");
+
+        const float footerReserve = theme.ShowStatusBar() ? 34.0f : 0.0f;
+        ImGui::BeginChild("##page_body", ImVec2(0.0f, -footerReserve), false);
+        PageRenderer::Render(m_Page);
         ImGui::EndChild();
 
+        if (theme.ShowStatusBar())
+        {
+            ImGui::Separator();
+            ImGui::TextDisabled("DX12 stable  |  input captured  |  %.0f FPS", ImGui::GetIO().Framerate);
+            ImGui::SameLine();
+            ImGui::TextDisabled("F5 close");
+        }
+
+        ImGui::EndChild();
         ImGui::End();
     }
 }

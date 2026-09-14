@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(TutonesMenuV2 VERSION 0.2.0 LANGUAGES C CXX)
+project(TutonesMenuV2 VERSION 0.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -50,6 +50,8 @@ add_library(Tutones-Menu-V2 SHARED
     src/hooking/HookManager.cpp
     src/render/Renderer.cpp
     src/ui/Menu.cpp
+    src/ui/MenuTheme.cpp
+    src/ui/PageRenderer.cpp
 )
 
 target_include_directories(Tutones-Menu-V2 PRIVATE src)
