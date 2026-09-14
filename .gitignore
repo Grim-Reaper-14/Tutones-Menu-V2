@@ -1,0 +1,12 @@
+/build/
+/out/
+.vs/
+.idea/
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+*.dll
+*.pdb
+*.lib
+*.exp
