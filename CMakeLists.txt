@@ -1,16 +1,51 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(TutonesMenuV2 VERSION 0.1.0 LANGUAGES CXX)
+project(TutonesMenuV2 VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+include(FetchContent)
+
+FetchContent_Declare(
+    minhook
+    GIT_REPOSITORY https://github.com/TsudaKageyu/minhook.git
+    GIT_TAG v1.3.4
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(minhook)
+
+FetchContent_Declare(
+    imgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    GIT_TAG v1.91.8
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(imgui)
+
+add_library(tutones_imgui STATIC
+    ${imgui_SOURCE_DIR}/imgui.cpp
+    ${imgui_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_SOURCE_DIR}/imgui_tables.cpp
+    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_dx12.cpp
+)
+
+target_include_directories(tutones_imgui PUBLIC
+    ${imgui_SOURCE_DIR}
+    ${imgui_SOURCE_DIR}/backends
+)
+
+target_link_libraries(tutones_imgui PRIVATE d3d12 dxgi)
 
 add_library(Tutones-Menu-V2 SHARED
     src/dllmain.cpp
     src/app/Application.cpp
     src/backend/BackendHub.cpp
     src/core/Logger.cpp
+    src/game/GameProcess.cpp
     src/game/GameRuntime.cpp
     src/hooking/HookManager.cpp
     src/render/Renderer.cpp
@@ -27,6 +62,14 @@ target_compile_definitions(Tutones-Menu-V2 PRIVATE
 if(MSVC)
     target_compile_options(Tutones-Menu-V2 PRIVATE /W4 /permissive- /EHsc)
 endif()
+
+target_link_libraries(Tutones-Menu-V2 PRIVATE
+    minhook
+    tutones_imgui
+    d3d12
+    dxgi
+    user32
+)
 
 set_target_properties(Tutones-Menu-V2 PROPERTIES
     OUTPUT_NAME "Tutones-Menu-V2"
