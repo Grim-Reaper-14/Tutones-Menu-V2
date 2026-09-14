@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(TutonesMenuV2 VERSION 0.3.0 LANGUAGES C CXX)
+project(TutonesMenuV2 VERSION 0.4.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -47,6 +47,10 @@ add_library(Tutones-Menu-V2 SHARED
     src/core/Logger.cpp
     src/game/GameProcess.cpp
     src/game/GameRuntime.cpp
+    src/game/memory/ModuleView.cpp
+    src/game/memory/PatternScanner.cpp
+    src/game/native/NativePointers.cpp
+    src/game/native/NativeRegistry.cpp
     src/hooking/HookManager.cpp
     src/render/Renderer.cpp
     src/ui/Menu.cpp
