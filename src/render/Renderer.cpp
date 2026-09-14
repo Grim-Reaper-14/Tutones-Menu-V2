@@ -7,10 +7,62 @@
 #include <imgui_impl_dx12.h>
 #include <imgui_impl_win32.h>
 
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
+
 namespace TutonesV2::Render
 {
     namespace
     {
+        LRESULT CALLBACK OverlayWindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+        {
+            return Renderer::Get().HandleWindowMessage(window, message, wParam, lParam);
+        }
+
+        bool IsMouseMessage(UINT message) noexcept
+        {
+            switch (message)
+            {
+            case WM_MOUSEMOVE:
+            case WM_MOUSELEAVE:
+            case WM_LBUTTONDOWN:
+            case WM_LBUTTONUP:
+            case WM_LBUTTONDBLCLK:
+            case WM_RBUTTONDOWN:
+            case WM_RBUTTONUP:
+            case WM_RBUTTONDBLCLK:
+            case WM_MBUTTONDOWN:
+            case WM_MBUTTONUP:
+            case WM_MBUTTONDBLCLK:
+            case WM_XBUTTONDOWN:
+            case WM_XBUTTONUP:
+            case WM_XBUTTONDBLCLK:
+            case WM_MOUSEWHEEL:
+            case WM_MOUSEHWHEEL:
+            case WM_SETCURSOR:
+                return true;
+            default:
+                return false;
+            }
+        }
+
+        bool IsKeyboardMessage(UINT message) noexcept
+        {
+            switch (message)
+            {
+            case WM_KEYDOWN:
+            case WM_KEYUP:
+            case WM_SYSKEYDOWN:
+            case WM_SYSKEYUP:
+            case WM_CHAR:
+            case WM_DEADCHAR:
+            case WM_SYSCHAR:
+            case WM_SYSDEADCHAR:
+                return true;
+            default:
+                return false;
+            }
+        }
+
         bool IsPrimaryWindowCandidate(HWND window) noexcept
         {
             if (!window || !::IsWindow(window) || !::IsWindowVisible(window))
@@ -170,9 +222,16 @@ namespace TutonesV2::Render
         if (f5Down && !wasDown)
         {
             UI::Menu::Get().Toggle();
+            const bool open = UI::Menu::Get().IsOpen();
+
+            if (ImGui::GetCurrentContext())
+                ImGui::GetIO().MouseDrawCursor = open;
+            if (open)
+                ::ReleaseCapture();
+
             Core::Logger::Get().Info(
                 "render",
-                UI::Menu::Get().IsOpen() ? "F5 opened V2 menu state" : "F5 closed V2 menu state");
+                open ? "F5 opened V2 menu state" : "F5 closed V2 menu state");
         }
 
         if (!UI::Menu::Get().IsOpen())
@@ -204,6 +263,30 @@ namespace TutonesV2::Render
             WaitForOverlayIdle();
             ResetSwapChainState();
         }
+    }
+
+    LRESULT Renderer::HandleWindowMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam) noexcept
+    {
+        WNDPROC original = m_OriginalWindowProc;
+
+        if (m_ImGuiReady && UI::Menu::Get().IsOpen())
+        {
+            if (message == WM_INPUT)
+            {
+                static_cast<void>(::DefWindowProcW(window, message, wParam, lParam));
+                return 0;
+            }
+
+            const bool imguiHandled = ImGui_ImplWin32_WndProcHandler(window, message, wParam, lParam) != 0;
+
+            if (IsMouseMessage(message) || IsKeyboardMessage(message) || imguiHandled)
+                return 1;
+        }
+
+        if (original)
+            return ::CallWindowProcW(original, window, message, wParam, lParam);
+
+        return ::DefWindowProcW(window, message, wParam, lParam);
     }
 
     bool Renderer::InitializeSwapChain(IDXGISwapChain* swapChain) noexcept
@@ -312,6 +395,7 @@ namespace TutonesV2::Render
         io.IniFilename = nullptr;
         io.LogFilename = nullptr;
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+        io.MouseDrawCursor = UI::Menu::Get().IsOpen();
         ImGui::StyleColorsDark();
 
         if (!ImGui_ImplWin32_Init(m_Window))
@@ -343,11 +427,67 @@ namespace TutonesV2::Render
         }
 
         m_ImGuiReady = true;
+        if (!AttachInputHook())
+        {
+            ResetSwapChainState();
+            return false;
+        }
+
         m_RenderReady.store(true, std::memory_order_release);
         Core::Logger::Get().Info(
             "render",
-            "GTA DX12/ImGui overlay initialized with the captured DIRECT command queue");
+            "GTA DX12/ImGui overlay initialized with captured DIRECT queue and menu input capture");
         return true;
+    }
+
+    bool Renderer::AttachInputHook() noexcept
+    {
+        if (m_InputHooked.load(std::memory_order_acquire))
+            return true;
+        if (!m_Window || !::IsWindow(m_Window))
+            return false;
+
+        ::SetLastError(ERROR_SUCCESS);
+        const LONG_PTR previous = ::SetWindowLongPtrW(
+            m_Window,
+            GWLP_WNDPROC,
+            reinterpret_cast<LONG_PTR>(&OverlayWindowProc));
+        const DWORD error = ::GetLastError();
+
+        if (previous == 0)
+        {
+            if (error != ERROR_SUCCESS)
+                Core::Logger::Get().Error("render.input", "Failed to install GTA window input hook");
+            else
+                Core::Logger::Get().Error("render.input", "GTA window input hook returned no original WndProc");
+            return false;
+        }
+
+        m_OriginalWindowProc = reinterpret_cast<WNDPROC>(previous);
+        m_InputHooked.store(true, std::memory_order_release);
+        Core::Logger::Get().Info("render.input", "Validated GTA WndProc input hook installed");
+        return true;
+    }
+
+    void Renderer::DetachInputHook() noexcept
+    {
+        if (!m_InputHooked.exchange(false, std::memory_order_acq_rel))
+            return;
+
+        if (m_Window && m_OriginalWindowProc && ::IsWindow(m_Window))
+        {
+            ::SetLastError(ERROR_SUCCESS);
+            const LONG_PTR result = ::SetWindowLongPtrW(
+                m_Window,
+                GWLP_WNDPROC,
+                reinterpret_cast<LONG_PTR>(m_OriginalWindowProc));
+            if (result == 0 && ::GetLastError() != ERROR_SUCCESS)
+                Core::Logger::Get().Error("render.input", "Failed to restore GTA original WndProc");
+            else
+                Core::Logger::Get().Info("render.input", "GTA original WndProc restored");
+        }
+
+        m_OriginalWindowProc = nullptr;
     }
 
     void Renderer::RenderMenuFrame() noexcept
@@ -438,6 +578,7 @@ namespace TutonesV2::Render
     void Renderer::ResetSwapChainState() noexcept
     {
         m_RenderReady.store(false, std::memory_order_release);
+        DetachInputHook();
 
         if (m_ImGuiReady)
         {
