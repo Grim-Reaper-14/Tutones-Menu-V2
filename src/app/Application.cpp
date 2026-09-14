@@ -30,15 +30,15 @@ namespace TutonesV2::App
 
         if (!Backend::BackendHub::Get().Initialize()
             || !Game::GameRuntime::Get().Initialize()
-            || !Hooking::HookManager::Get().Initialize()
-            || !Render::Renderer::Get().Initialize())
+            || !Render::Renderer::Get().Initialize()
+            || !Hooking::HookManager::Get().Initialize())
         {
             Core::Logger::Get().Error("core", "V2 service initialization failed");
             Shutdown();
             return false;
         }
 
-        Core::Logger::Get().Info("core", "Tutones Menu V2 clean base ready");
+        Core::Logger::Get().Info("core", "Tutones Menu V2 DX12 shell ready; F5 toggles the menu");
         return true;
     }
 
@@ -48,8 +48,8 @@ namespace TutonesV2::App
             return;
 
         Core::Logger::Get().Info("core", "Tutones Menu V2 shutting down");
-        Render::Renderer::Get().Shutdown();
         Hooking::HookManager::Get().Shutdown();
+        Render::Renderer::Get().Shutdown();
         Game::GameRuntime::Get().Shutdown();
         Backend::BackendHub::Get().Shutdown();
         Core::Logger::Get().Info("core", "Tutones Menu V2 stopped");
