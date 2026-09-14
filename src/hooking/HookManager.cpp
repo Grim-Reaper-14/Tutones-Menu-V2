@@ -1,6 +1,8 @@
 #include "HookManager.hpp"
 
 #include "../core/Logger.hpp"
+#include "../game/GameRuntime.hpp"
+#include "../game/native/NativePointers.hpp"
 #include "../render/Renderer.hpp"
 
 #include <Windows.h>
@@ -8,6 +10,8 @@
 #include <d3d12.h>
 #include <dxgi1_4.h>
 #include <wrl/client.h>
+
+#include <cstdint>
 
 namespace TutonesV2::Hooking
 {
@@ -22,10 +26,12 @@ namespace TutonesV2::Hooking
         PresentFn g_OriginalPresent{};
         ResizeBuffersFn g_OriginalResizeBuffers{};
         ExecuteCommandListsFn g_OriginalExecuteCommandLists{};
+        Game::Native::RunScriptThreadsFn g_OriginalRunScriptThreads{};
 
         void* g_PresentTarget{};
         void* g_ResizeBuffersTarget{};
         void* g_ExecuteCommandListsTarget{};
+        void* g_RunScriptThreadsTarget{};
 
         LRESULT CALLBACK ProbeWindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
         {
@@ -57,6 +63,16 @@ namespace TutonesV2::Hooking
         {
             Render::Renderer::Get().CaptureCommandQueue(commandQueue);
             g_OriginalExecuteCommandLists(commandQueue, commandListCount, commandLists);
+        }
+
+        bool RunScriptThreadsDetour(int operationsToExecute) noexcept
+        {
+            bool result{};
+            if (g_OriginalRunScriptThreads)
+                result = g_OriginalRunScriptThreads(operationsToExecute);
+
+            Game::GameRuntime::Get().OnScriptSchedulerTick();
+            return result;
         }
 
         bool DiscoverDx12Targets(void*& present, void*& resizeBuffers, void*& executeCommandLists) noexcept
@@ -155,13 +171,17 @@ namespace TutonesV2::Hooking
                 static_cast<void>(::MH_RemoveHook(g_ResizeBuffersTarget));
             if (g_ExecuteCommandListsTarget)
                 static_cast<void>(::MH_RemoveHook(g_ExecuteCommandListsTarget));
+            if (g_RunScriptThreadsTarget)
+                static_cast<void>(::MH_RemoveHook(g_RunScriptThreadsTarget));
 
             g_PresentTarget = nullptr;
             g_ResizeBuffersTarget = nullptr;
             g_ExecuteCommandListsTarget = nullptr;
+            g_RunScriptThreadsTarget = nullptr;
             g_OriginalPresent = nullptr;
             g_OriginalResizeBuffers = nullptr;
             g_OriginalExecuteCommandLists = nullptr;
+            g_OriginalRunScriptThreads = nullptr;
         }
     }
 
@@ -187,6 +207,14 @@ namespace TutonesV2::Hooking
             return false;
         }
 
+        const auto runScriptThreads = Game::Native::NativePointers::Get().RunScriptThreads();
+        if (!runScriptThreads)
+        {
+            Core::Logger::Get().Error("hooks", "RunScriptThreads target is unavailable");
+            m_Initialized.store(false);
+            return false;
+        }
+
         const MH_STATUS initStatus = ::MH_Initialize();
         if (initStatus != MH_OK && initStatus != MH_ERROR_ALREADY_INITIALIZED)
         {
@@ -198,21 +226,25 @@ namespace TutonesV2::Hooking
         g_PresentTarget = present;
         g_ResizeBuffersTarget = resizeBuffers;
         g_ExecuteCommandListsTarget = executeCommandLists;
+        g_RunScriptThreadsTarget = reinterpret_cast<void*>(reinterpret_cast<std::uintptr_t>(runScriptThreads));
 
         if (::MH_CreateHook(g_PresentTarget, reinterpret_cast<LPVOID>(&PresentDetour), reinterpret_cast<LPVOID*>(&g_OriginalPresent)) != MH_OK
             || ::MH_CreateHook(g_ResizeBuffersTarget, reinterpret_cast<LPVOID>(&ResizeBuffersDetour), reinterpret_cast<LPVOID*>(&g_OriginalResizeBuffers)) != MH_OK
             || ::MH_CreateHook(g_ExecuteCommandListsTarget, reinterpret_cast<LPVOID>(&ExecuteCommandListsDetour), reinterpret_cast<LPVOID*>(&g_OriginalExecuteCommandLists)) != MH_OK
+            || ::MH_CreateHook(g_RunScriptThreadsTarget, reinterpret_cast<LPVOID>(&RunScriptThreadsDetour), reinterpret_cast<LPVOID*>(&g_OriginalRunScriptThreads)) != MH_OK
             || ::MH_EnableHook(MH_ALL_HOOKS) != MH_OK)
         {
             static_cast<void>(::MH_DisableHook(MH_ALL_HOOKS));
             RemoveInstalledHooks();
             static_cast<void>(::MH_Uninitialize());
-            Core::Logger::Get().Error("hooks", "Failed to install DX12 hooks");
+            Core::Logger::Get().Error("hooks", "Failed to install DX12/native scheduler hooks");
             m_Initialized.store(false);
             return false;
         }
 
-        Core::Logger::Get().Info("hooks", "DX12 Present, ResizeBuffers and command-queue hooks installed");
+        Core::Logger::Get().Info(
+            "hooks",
+            "DX12 Present, ResizeBuffers, command-queue and GTA script-scheduler hooks installed");
         return true;
     }
 
@@ -224,7 +256,7 @@ namespace TutonesV2::Hooking
         static_cast<void>(::MH_DisableHook(MH_ALL_HOOKS));
         RemoveInstalledHooks();
         static_cast<void>(::MH_Uninitialize());
-        Core::Logger::Get().Info("hooks", "DX12 hooks removed");
+        Core::Logger::Get().Info("hooks", "DX12/native scheduler hooks removed");
     }
 
     bool HookManager::IsInitialized() const noexcept
