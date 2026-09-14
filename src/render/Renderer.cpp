@@ -323,13 +323,18 @@ namespace TutonesV2::Render
 
         const D3D12_CPU_DESCRIPTOR_HANDLE fontCpu = m_SrvHeap->GetCPUDescriptorHandleForHeapStart();
         const D3D12_GPU_DESCRIPTOR_HANDLE fontGpu = m_SrvHeap->GetGPUDescriptorHandleForHeapStart();
-        if (!ImGui_ImplDX12_Init(
-                m_Device.Get(),
-                static_cast<int>(description.BufferCount),
-                m_BackBufferFormat,
-                m_SrvHeap.Get(),
-                fontCpu,
-                fontGpu))
+
+        ImGui_ImplDX12_InitInfo initInfo{};
+        initInfo.Device = m_Device.Get();
+        initInfo.CommandQueue = commandQueue;
+        initInfo.NumFramesInFlight = static_cast<int>(description.BufferCount);
+        initInfo.RTVFormat = m_BackBufferFormat;
+        initInfo.DSVFormat = DXGI_FORMAT_UNKNOWN;
+        initInfo.SrvDescriptorHeap = m_SrvHeap.Get();
+        initInfo.LegacySingleSrvCpuDescriptor = fontCpu;
+        initInfo.LegacySingleSrvGpuDescriptor = fontGpu;
+
+        if (!ImGui_ImplDX12_Init(&initInfo))
         {
             ImGui_ImplWin32_Shutdown();
             ImGui::DestroyContext();
@@ -341,7 +346,7 @@ namespace TutonesV2::Render
         m_RenderReady.store(true, std::memory_order_release);
         Core::Logger::Get().Info(
             "render",
-            "GTA DX12/ImGui overlay initialized on pinned swap chain; no WndProc subclass installed");
+            "GTA DX12/ImGui overlay initialized with the captured DIRECT command queue");
         return true;
     }
 
