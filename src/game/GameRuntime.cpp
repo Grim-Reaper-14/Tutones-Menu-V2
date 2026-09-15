@@ -121,6 +121,7 @@ namespace TutonesV2::Game
         m_ShuttingDown.store(false, std::memory_order_release);
         m_NativeCanaryPassed.store(false, std::memory_order_release);
         m_ActiveCallbacks.store(0, std::memory_order_release);
+        m_NativeState.store(NativeRuntimeState::Unavailable, std::memory_order_release);
         m_NativeInitAttempted = false;
         m_NativeCanaryFailureLogged = false;
         m_LoggedNoScriptThread = false;
@@ -140,14 +141,16 @@ namespace TutonesV2::Game
 
         if (!Native::NativePointers::Get().Resolve())
         {
-            Core::Logger::Get().Error("game", "Focused native runtime pointer resolution failed");
-            m_Initialized.store(false, std::memory_order_release);
-            return false;
+            Core::Logger::Get().Warn(
+                "game",
+                "Native compatibility gate blocked the GTA scheduler runtime; V2 will continue in DX12/UI-only mode");
+            return true;
         }
 
+        m_NativeState.store(NativeRuntimeState::PointersReady, std::memory_order_release);
         Core::Logger::Get().Info(
             "game",
-            "GTA5_Enhanced.exe detected; native pointers resolved and scheduler hook is ready to install");
+            "GTA5_Enhanced.exe detected; native pointers resolved and scheduler hook is eligible to install");
         return true;
     }
 
@@ -177,6 +180,7 @@ namespace TutonesV2::Game
         Native::NativePointers::Get().Reset();
 
         m_NativeCanaryPassed.store(false, std::memory_order_release);
+        m_NativeState.store(NativeRuntimeState::Unavailable, std::memory_order_release);
         m_NativeInitAttempted = false;
         m_NativeCanaryFailureLogged = false;
         m_LoggedNoScriptThread = false;
@@ -190,9 +194,15 @@ namespace TutonesV2::Game
         return m_Initialized.load(std::memory_order_acquire);
     }
 
+    bool GameRuntime::NativeRuntimeAvailable() const noexcept
+    {
+        return NativeState() != NativeRuntimeState::Unavailable;
+    }
+
     bool GameRuntime::NativeReady() const noexcept
     {
-        return Native::NativeRegistry::Get().IsReady()
+        return NativeState() == NativeRuntimeState::Ready
+            && Native::NativeRegistry::Get().IsReady()
             && m_NativeCanaryPassed.load(std::memory_order_acquire);
     }
 
@@ -201,10 +211,43 @@ namespace TutonesV2::Game
         return m_NativeCanaryPassed.load(std::memory_order_acquire);
     }
 
+    NativeRuntimeState GameRuntime::NativeState() const noexcept
+    {
+        return m_NativeState.load(std::memory_order_acquire);
+    }
+
+    const char* GameRuntime::NativeStateName(NativeRuntimeState state) noexcept
+    {
+        switch (state)
+        {
+        case NativeRuntimeState::Unavailable: return "Unavailable / compatibility gate blocked";
+        case NativeRuntimeState::PointersReady: return "Pointers ready / scheduler hook pending";
+        case NativeRuntimeState::SchedulerActive: return "Scheduler active / native table pending";
+        case NativeRuntimeState::HandlersReady: return "Handlers cached / canary pending";
+        case NativeRuntimeState::Ready: return "Ready";
+        }
+        return "Unknown";
+    }
+
+    void GameRuntime::MarkSchedulerHookInstalled() noexcept
+    {
+        NativeRuntimeState expected = NativeRuntimeState::PointersReady;
+        if (m_NativeState.compare_exchange_strong(
+                expected,
+                NativeRuntimeState::SchedulerActive,
+                std::memory_order_acq_rel))
+        {
+            Core::Logger::Get().Info("game", "Native compatibility gate opened GTA scheduler execution");
+        }
+    }
+
     bool GameRuntime::Enqueue(std::function<void()> task)
     {
-        if (!task || !IsInitialized() || m_ShuttingDown.load(std::memory_order_acquire))
+        if (!task || !IsInitialized() || !NativeReady()
+            || m_ShuttingDown.load(std::memory_order_acquire))
+        {
             return false;
+        }
 
         std::scoped_lock lock(m_TaskMutex);
         if (m_Tasks.size() >= MaxQueuedTasks)
@@ -219,8 +262,11 @@ namespace TutonesV2::Game
 
     void GameRuntime::OnScriptSchedulerTick() noexcept
     {
-        if (!IsInitialized() || m_ShuttingDown.load(std::memory_order_acquire))
+        if (!IsInitialized() || !NativeRuntimeAvailable()
+            || m_ShuttingDown.load(std::memory_order_acquire))
+        {
             return;
+        }
 
         CallbackScope callback(m_ActiveCallbacks);
 
@@ -266,10 +312,14 @@ namespace TutonesV2::Game
             Core::Logger::Get().Info("game", "Initializing V1 native catalog inside GTA script TLS scope");
             if (!registry.Initialize(Native::NativePointers::Get().InitNativeTables()))
             {
-                Core::Logger::Get().Error("game", "V2 native handler table failed to initialize");
+                m_NativeState.store(NativeRuntimeState::Unavailable, std::memory_order_release);
+                Core::Logger::Get().Error(
+                    "game",
+                    "Native compatibility gate closed: V2 native handler table failed to initialize");
                 return;
             }
 
+            m_NativeState.store(NativeRuntimeState::HandlersReady, std::memory_order_release);
             Core::Logger::Get().Info("game", "Native handlers cached; canary deferred to next scheduler tick");
             return;
         }
@@ -279,15 +329,19 @@ namespace TutonesV2::Game
             const auto ped = Native::NativeInvoker::Invoke<std::int32_t>(Native::NativeId::PlayerPedId);
             if (!ped)
             {
+                m_NativeState.store(NativeRuntimeState::Unavailable, std::memory_order_release);
                 if (!m_NativeCanaryFailureLogged)
                 {
                     m_NativeCanaryFailureLogged = true;
-                    Core::Logger::Get().Error("game", "Native canary failed: PLAYER_PED_ID invocation was rejected");
+                    Core::Logger::Get().Error(
+                        "game",
+                        "Native compatibility gate closed: PLAYER_PED_ID canary invocation was rejected");
                 }
                 return;
             }
 
             m_NativeCanaryPassed.store(true, std::memory_order_release);
+            m_NativeState.store(NativeRuntimeState::Ready, std::memory_order_release);
             Core::Logger::Get().Info(
                 "game",
                 std::string("Native canary passed: PLAYER_PED_ID returned ") + std::to_string(*ped));
