@@ -1,6 +1,8 @@
 #include "PageRenderer.hpp"
 
 #include "MenuTheme.hpp"
+#include "../backend/BackendHub.hpp"
+#include "../game/GameRuntime.hpp"
 
 #include <imgui.h>
 
@@ -35,6 +37,15 @@ namespace TutonesV2::UI
             PlannedSection("Quick Teleports", "Common locations will be exposed as simple backend requests.", "TeleportService");
             PlannedSection("Waypoint & Objective", "Waypoint and objective destinations will be resolved outside the DX12 hot path.", "TeleportService / NativeRuntime");
             PlannedSection("Saved Locations", "Named locations will be stored by the configuration layer and dispatched on demand.", "TeleportService / Config");
+
+            ImGui::SeparatorText("Compatibility Lock");
+            ImGui::TextWrapped(
+                "Teleport execution is intentionally locked while the post-update GTA native runtime is unverified. The UI and backend command path can be prepared without calling game natives.");
+            ImGui::BeginDisabled();
+            ImGui::Button("Teleport to Waypoint (prepared)");
+            ImGui::SameLine();
+            ImGui::Button("Teleport to Objective (prepared)");
+            ImGui::EndDisabled();
         }
 
         void RenderWorld() noexcept
@@ -54,6 +65,8 @@ namespace TutonesV2::UI
         void RenderSettings() noexcept
         {
             auto& theme = MenuTheme::Get();
+            auto& gameRuntime = Game::GameRuntime::Get();
+            auto& backend = Backend::BackendHub::Get();
 
             ImGui::SeparatorText("Appearance");
             ImGui::SliderFloat("UI scale", &theme.Scale(), 0.85f, 1.35f, "%.2fx");
@@ -70,7 +83,25 @@ namespace TutonesV2::UI
             ImGui::BulletText("Input capture: Win32 / ImGui");
             ImGui::BulletText("Renderer: DirectX 12");
             ImGui::BulletText("Feature work on Present: disabled");
-            ImGui::TextDisabled("Game-facing settings will be added only after the backend runtime is validated.");
+            ImGui::BulletText(
+                "Native runtime: %s",
+                Game::GameRuntime::NativeStateName(gameRuntime.NativeState()));
+            ImGui::BulletText(
+                "Backend command bus: %zu / %zu pending",
+                backend.PendingCount(),
+                Backend::BackendHub::CommandCapacity);
+            ImGui::TextDisabled("Native target reference: GTA V Enhanced 1.73 / b1158.13 (pre-update checkpoint)");
+
+            if (!gameRuntime.NativeRuntimeAvailable())
+            {
+                ImGui::TextWrapped(
+                    "Compatibility gate is closed. DX12/UI may continue, but the GTA script scheduler hook and native feature execution remain disabled.");
+            }
+            else if (!gameRuntime.NativeReady())
+            {
+                ImGui::TextWrapped(
+                    "Native prerequisites resolved, but execution is not considered ready until the scheduler, handler cache, and PLAYER_PED_ID canary pass.");
+            }
         }
     }
 
