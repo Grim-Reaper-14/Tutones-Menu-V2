@@ -44,7 +44,7 @@ namespace TutonesV2::App
             return false;
         }
 
-        Core::Logger::Get().Info("core", "Tutones Menu V2 DX12 shell ready; F5 toggles the menu");
+        Core::Logger::Get().Info("core", "Tutones Menu V2 DX12 shell ready; Insert or F4 toggles the menu");
         return true;
     }
 

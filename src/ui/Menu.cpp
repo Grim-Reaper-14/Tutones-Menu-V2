@@ -67,7 +67,7 @@ namespace TutonesV2::UI
 
         ImGui::Spacing();
         ImGui::Separator();
-        ImGui::TextDisabled("F5  Toggle menu");
+        ImGui::TextDisabled("Insert / F4  Toggle menu");
         ImGui::TextDisabled("Mouse  UI control");
         ImGui::EndChild();
 
@@ -89,7 +89,7 @@ namespace TutonesV2::UI
             ImGui::Separator();
             ImGui::TextDisabled("DX12 stable  |  input captured  |  %.0f FPS", ImGui::GetIO().Framerate);
             ImGui::SameLine();
-            ImGui::TextDisabled("F5 close");
+            ImGui::TextDisabled("Insert / F4 close");
         }
 
         ImGui::EndChild();

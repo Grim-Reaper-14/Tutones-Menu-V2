@@ -399,7 +399,7 @@ namespace TutonesV2::UI
 
             ImGui::Spacing();
             ImGui::SeparatorText("Runtime");
-            ImGui::BulletText("Menu toggle: F5");
+            ImGui::BulletText("Menu toggle: Insert or F4");
             ImGui::BulletText("Input capture: Win32 / ImGui");
             ImGui::BulletText("Renderer: DirectX 12");
             ImGui::BulletText("Feature work on Present: disabled");

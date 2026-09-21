@@ -47,7 +47,7 @@ namespace TutonesV2::Render
 
         std::atomic_bool m_Initialized{};
         std::atomic_bool m_RenderReady{};
-        std::atomic_bool m_F5Down{};
+        std::atomic_bool m_ToggleKeyDown{};
         std::atomic_bool m_InputHooked{};
         std::atomic<IDXGISwapChain*> m_PrimarySwapChain{};
         std::atomic<ID3D12Device*> m_PrimaryDevice{};

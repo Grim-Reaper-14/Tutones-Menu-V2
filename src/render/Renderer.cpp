@@ -217,9 +217,11 @@ namespace TutonesV2::Render
         if (!SelectPrimarySwapChain(swapChain))
             return;
 
-        const bool f5Down = (::GetAsyncKeyState(VK_F5) & 0x8000) != 0;
-        const bool wasDown = m_F5Down.exchange(f5Down, std::memory_order_acq_rel);
-        if (f5Down && !wasDown)
+        const bool insertDown = (::GetAsyncKeyState(VK_INSERT) & 0x8000) != 0;
+        const bool f4Down = (::GetAsyncKeyState(VK_F4) & 0x8000) != 0;
+        const bool toggleKeyDown = insertDown || f4Down;
+        const bool wasDown = m_ToggleKeyDown.exchange(toggleKeyDown, std::memory_order_acq_rel);
+        if (toggleKeyDown && !wasDown)
         {
             UI::Menu::Get().Toggle();
             const bool open = UI::Menu::Get().IsOpen();
@@ -231,7 +233,7 @@ namespace TutonesV2::Render
 
             Core::Logger::Get().Info(
                 "render",
-                open ? "F5 opened V2 menu state" : "F5 closed V2 menu state");
+                open ? "Insert/F4 opened V2 menu state" : "Insert/F4 closed V2 menu state");
         }
 
         if (!UI::Menu::Get().IsOpen())
