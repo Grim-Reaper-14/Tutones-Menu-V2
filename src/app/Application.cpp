@@ -4,6 +4,7 @@
 #include "../core/Logger.hpp"
 #include "../game/GameRuntime.hpp"
 #include "../features/player/PlayerService.hpp"
+#include "../features/player/PlayerStatsService.hpp"
 #include "../features/player/SelfOnlineService.hpp"
 #include "../hooking/HookManager.hpp"
 #include "../render/Renderer.hpp"
@@ -34,6 +35,7 @@ namespace TutonesV2::App
             || !Game::GameRuntime::Get().Initialize()
             || !Features::Player::PlayerService::Get().Initialize()
             || !Features::Player::SelfOnlineService::Get().Initialize()
+            || !Features::Player::PlayerStatsService::Get().Initialize()
             || !Render::Renderer::Get().Initialize()
             || !Hooking::HookManager::Get().Initialize())
         {
@@ -52,6 +54,7 @@ namespace TutonesV2::App
             return;
 
         Core::Logger::Get().Info("core", "Tutones Menu V2 shutting down");
+        Features::Player::PlayerStatsService::Get().Shutdown();
         Features::Player::SelfOnlineService::Get().Shutdown();
         Features::Player::PlayerService::Get().Shutdown();
         Hooking::HookManager::Get().Shutdown();
