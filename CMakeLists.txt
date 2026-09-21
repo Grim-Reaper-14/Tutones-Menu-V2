@@ -49,11 +49,13 @@ add_library(Tutones-Menu-V2 SHARED
     src/game/GameRuntime.cpp
     src/game/memory/ModuleView.cpp
     src/game/memory/PatternScanner.cpp
+    src/game/memory/BytePatch.cpp
     src/game/native/NativePointers.cpp
     src/game/native/NativeRegistry.cpp
     src/features/player/PlayerService.cpp
     src/features/player/SelfOnlineService.cpp
     src/features/player/PlayerStatsService.cpp
+    src/features/weapon/WeaponAimPatches.cpp
     src/features/weapon/WeaponService.cpp
     src/features/vehicle/VehicleService.cpp
     src/features/world/TeleportService.cpp
