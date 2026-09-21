@@ -456,24 +456,64 @@ namespace TutonesV2::UI
             auto& service = Features::World::TeleportService::Get();
             const auto snapshot = service.Snapshot();
             const bool nativeReady = Game::GameRuntime::Get().NativeReady();
+
             static float coords[3]{0.0f, 0.0f, 0.0f};
             static bool resolveGround = true;
+            static float directionalDistance = 5.0f;
 
-            ImGui::SeparatorText("Waypoint");
+            ImGui::SeparatorText("YimMenuV2 Teleport");
+            ImGui::TextDisabled("Waypoint Z-resolution mirrors YimMenuV2: collision request, 20 yielded ground attempts, water check, then approximate-height fallback.");
+
             ImGui::BeginDisabled(!service.IsReady() || !nativeReady || snapshot.pending);
+
             if (ImGui::Button("Teleport to Waypoint"))
                 static_cast<void>(service.QueueWaypoint());
+            ImGui::SameLine();
+            if (ImGui::Button("Teleport to Objective"))
+                static_cast<void>(service.QueueObjective());
+
+            ImGui::EndDisabled();
+
+            bool autoWaypoint = snapshot.autoWaypointEnabled;
+            ImGui::BeginDisabled(!service.IsReady() || !nativeReady);
+            if (ImGui::Checkbox("Auto Teleport to Waypoint", &autoWaypoint))
+                service.SetAutoWaypoint(autoWaypoint);
+            ImGui::EndDisabled();
+
+            ImGui::SeparatorText("Directional Teleport");
+            ImGui::SetNextItemWidth(180.0f);
+            ImGui::SliderFloat("Distance", &directionalDistance, 1.0f, 100.0f, "%.1f");
+
+            ImGui::BeginDisabled(!service.IsReady() || !nativeReady || snapshot.pending);
+            if (ImGui::Button("Forward"))
+                static_cast<void>(service.QueueDirectional(0.0f, directionalDistance, 0.0f));
+            ImGui::SameLine();
+            if (ImGui::Button("Backward"))
+                static_cast<void>(service.QueueDirectional(0.0f, -directionalDistance, 0.0f));
+            ImGui::SameLine();
+            if (ImGui::Button("Left"))
+                static_cast<void>(service.QueueDirectional(-directionalDistance, 0.0f, 0.0f));
+            ImGui::SameLine();
+            if (ImGui::Button("Right"))
+                static_cast<void>(service.QueueDirectional(directionalDistance, 0.0f, 0.0f));
+
+            if (ImGui::Button("Up"))
+                static_cast<void>(service.QueueDirectional(0.0f, 0.0f, directionalDistance));
+            ImGui::SameLine();
+            if (ImGui::Button("Down"))
+                static_cast<void>(service.QueueDirectional(0.0f, 0.0f, -directionalDistance));
 
             ImGui::SeparatorText("Coordinates");
             ImGui::InputFloat3("XYZ", coords);
-            ImGui::Checkbox("Resolve safe ground / water", &resolveGround);
+            ImGui::Checkbox("Resolve ground / water like YimMenuV2", &resolveGround);
             if (ImGui::Button("Teleport to Coordinates"))
                 static_cast<void>(service.QueueCoordinates(coords[0], coords[1], coords[2], resolveGround));
             ImGui::EndDisabled();
 
-            ImGui::TextDisabled("%s", snapshot.message.c_str());
+            ImGui::Spacing();
+            ImGui::TextWrapped("Teleport status: %s", snapshot.message.c_str());
             if (snapshot.pending)
-                ImGui::TextDisabled("Teleport is waiting for safe destination collision...");
+                ImGui::TextDisabled("Resolving destination on the GTA scheduler...");
         }
 
         void RenderWorld() noexcept
