@@ -362,12 +362,42 @@ namespace TutonesV2::UI
             bool infiniteAmmo = service.InfiniteAmmo();
             bool infiniteClip = service.InfiniteClip();
             bool explosiveAmmo = service.ExplosiveAmmo();
+            bool aimbot = service.Aimbot();
+            bool aimForHead = service.AimForHead();
+            bool targetDrivers = service.TargetDrivers();
+            bool laserSight = service.LaserSight();
+
             if (ImGui::Checkbox("Infinite Ammo", &infiniteAmmo))
                 status = service.SetInfiniteAmmo(infiniteAmmo) ? "Infinite Ammo updated" : "Infinite Ammo rejected";
             if (ImGui::Checkbox("Infinite Clip", &infiniteClip))
                 status = service.SetInfiniteClip(infiniteClip) ? "Infinite Clip updated" : "Infinite Clip rejected";
             if (ImGui::Checkbox("Explosive Ammo", &explosiveAmmo))
                 status = service.SetExplosiveAmmo(explosiveAmmo) ? "Explosive Ammo updated" : "Explosive Ammo rejected";
+
+            ImGui::SeparatorText("Aim Assist");
+            ImGui::TextDisabled(
+                "Aimbot: %s | Head: %s | Drivers: %s",
+                service.AimbotSupported() ? "READY" : "UNAVAILABLE",
+                service.AimForHeadSupported() ? "READY" : "UNAVAILABLE",
+                service.TargetDriversSupported() ? "READY" : "UNAVAILABLE");
+
+            ImGui::BeginDisabled(!service.AimbotSupported());
+            if (ImGui::Checkbox("Aimbot", &aimbot))
+                status = service.SetAimbot(aimbot) ? "Aimbot updated" : "Aimbot rejected";
+            ImGui::EndDisabled();
+
+            ImGui::BeginDisabled(!aimbot || !service.AimForHeadSupported());
+            if (ImGui::Checkbox("Aim For Head", &aimForHead))
+                status = service.SetAimForHead(aimForHead) ? "Aim For Head updated" : "Aim For Head rejected";
+            ImGui::EndDisabled();
+
+            ImGui::BeginDisabled(!aimbot || !service.TargetDriversSupported());
+            if (ImGui::Checkbox("Target Drivers", &targetDrivers))
+                status = service.SetTargetDrivers(targetDrivers) ? "Target Drivers updated" : "Target Drivers rejected";
+            ImGui::EndDisabled();
+
+            if (ImGui::Checkbox("Laser Sight", &laserSight))
+                status = service.SetLaserSight(laserSight) ? "Laser Sight updated" : "Laser Sight rejected";
 
             ImGui::SeparatorText("Weapon Utilities");
             if (ImGui::Button("Give All Weapons"))

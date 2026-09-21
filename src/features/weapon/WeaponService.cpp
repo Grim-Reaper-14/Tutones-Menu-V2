@@ -1,4 +1,5 @@
 #include "WeaponService.hpp"
+#include "WeaponAimPatches.hpp"
 #include "../../game/GameRuntime.hpp"
 #include "../../game/native/NativeInvoker.hpp"
 #include <array>
@@ -30,17 +31,38 @@ namespace TutonesV2::Features::Weapon
     }
 
     WeaponService& WeaponService::Get() noexcept { static WeaponService s; return s; }
-    bool WeaponService::Initialize() noexcept { m_Ready=true; return true; }
+    bool WeaponService::Initialize() noexcept {
+        m_LoopQueued=false;
+        m_InfiniteAmmo=false;
+        m_InfiniteClip=false;
+        m_ExplosiveAmmo=false;
+        m_Aimbot=false;
+        m_AimForHead=true;
+        m_TargetDrivers=true;
+        m_LaserSight=false;
+        static_cast<void>(WeaponAimPatches::Get().Initialize());
+        m_Ready=true;
+        return true;
+    }
     bool WeaponService::IsReady() const noexcept { return m_Ready.load(); }
     bool WeaponService::InfiniteAmmo() const noexcept { return m_InfiniteAmmo.load(); }
     bool WeaponService::InfiniteClip() const noexcept { return m_InfiniteClip.load(); }
     bool WeaponService::ExplosiveAmmo() const noexcept { return m_ExplosiveAmmo.load(); }
+    bool WeaponService::Aimbot() const noexcept { return m_Aimbot.load(); }
+    bool WeaponService::AimForHead() const noexcept { return m_AimForHead.load(); }
+    bool WeaponService::TargetDrivers() const noexcept { return m_TargetDrivers.load(); }
+    bool WeaponService::LaserSight() const noexcept { return m_LaserSight.load(); }
+    bool WeaponService::AimbotSupported() const noexcept { return WeaponAimPatches::Get().AimbotSupported(); }
+    bool WeaponService::AimForHeadSupported() const noexcept { return WeaponAimPatches::Get().AimForHeadSupported(); }
+    bool WeaponService::TargetDriversSupported() const noexcept { return WeaponAimPatches::Get().TargetDriversSupported(); }
 
     std::uint32_t WeaponService::Joaat(const char* text) noexcept {
         std::uint32_t h{}; while(text&&*text){unsigned char c=static_cast<unsigned char>(*text++); if(c>='A'&&c<='Z')c=static_cast<unsigned char>(c-'A'+'a'); h+=c;h+=h<<10;h^=h>>6;} h+=h<<3;h^=h>>11;h+=h<<15;return h;
     }
 
-    bool WeaponService::HasPersistentWork() const noexcept { return m_InfiniteAmmo||m_InfiniteClip||m_ExplosiveAmmo; }
+    bool WeaponService::HasPersistentWork() const noexcept {
+        return m_InfiniteAmmo||m_InfiniteClip||m_ExplosiveAmmo||m_Aimbot||m_LaserSight;
+    }
     bool WeaponService::EnsureLoop() noexcept {
         if(!IsReady()||!Game::GameRuntime::Get().NativeReady()||!HasPersistentWork()) return false;
         bool expected=false; if(!m_LoopQueued.compare_exchange_strong(expected,true)) return true;
@@ -49,6 +71,10 @@ namespace TutonesV2::Features::Weapon
     }
     void WeaponService::Tick() noexcept {
         if(!IsReady()){m_LoopQueued=false;return;}
+        ApplyAimState();
+        static_cast<void>(NativeInvoker::InvokeVoid(
+            NativeId::EnableLaserSightRendering,
+            std::int32_t{m_LaserSight.load()?1:0}));
         const int ped=Ped();
         if(ped){
             static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetPedInfiniteAmmo,ped,std::int32_t{m_InfiniteAmmo?1:0},std::uint32_t{0}));
@@ -65,6 +91,52 @@ namespace TutonesV2::Features::Weapon
         }
         if(!HasPersistentWork()){m_LoopQueued=false;return;}
         if(!Game::GameRuntime::Get().Enqueue([this]{Tick();})) m_LoopQueued=false;
+    }
+
+    void WeaponService::ApplyAimState() noexcept {
+        auto& patches=WeaponAimPatches::Get();
+        const bool aimbot=m_Aimbot.load();
+        static_cast<void>(patches.ApplyAimbot(aimbot));
+        static_cast<void>(patches.ApplyAimForHead(aimbot&&m_AimForHead.load()));
+        static_cast<void>(patches.ApplyTargetDrivers(aimbot&&m_TargetDrivers.load()));
+    }
+
+    bool WeaponService::SetAimbot(bool enabled) noexcept {
+        if(!IsReady()||!Game::GameRuntime::Get().NativeReady())return false;
+        if(enabled&&!AimbotSupported())return false;
+        m_Aimbot=enabled;
+        if(enabled)return EnsureLoop();
+        return Game::GameRuntime::Get().Enqueue([this]{
+            auto& patches=WeaponAimPatches::Get();
+            static_cast<void>(patches.ApplyAimForHead(false));
+            static_cast<void>(patches.ApplyTargetDrivers(false));
+            static_cast<void>(patches.ApplyAimbot(false));
+        });
+    }
+
+    bool WeaponService::SetAimForHead(bool enabled) noexcept {
+        if(!IsReady())return false;
+        if(enabled&&!AimForHeadSupported())return false;
+        m_AimForHead=enabled;
+        if(m_Aimbot.load())return EnsureLoop();
+        return true;
+    }
+
+    bool WeaponService::SetTargetDrivers(bool enabled) noexcept {
+        if(!IsReady())return false;
+        if(enabled&&!TargetDriversSupported())return false;
+        m_TargetDrivers=enabled;
+        if(m_Aimbot.load())return EnsureLoop();
+        return true;
+    }
+
+    bool WeaponService::SetLaserSight(bool enabled) noexcept {
+        if(!IsReady()||!Game::GameRuntime::Get().NativeReady())return false;
+        m_LaserSight=enabled;
+        if(enabled)return EnsureLoop();
+        return Game::GameRuntime::Get().Enqueue([]{
+            static_cast<void>(NativeInvoker::InvokeVoid(NativeId::EnableLaserSightRendering,std::int32_t{0}));
+        });
     }
 
     bool WeaponService::SetInfiniteAmmo(bool e) noexcept {
@@ -95,7 +167,23 @@ namespace TutonesV2::Features::Weapon
     }
 
     void WeaponService::Shutdown() noexcept {
-        if(!m_Ready.exchange(false))return; m_InfiniteAmmo=false;m_InfiniteClip=false;m_ExplosiveAmmo=false;m_LoopQueued=false;
-        if(Game::GameRuntime::Get().NativeReady()) static_cast<void>(Game::GameRuntime::Get().Enqueue([]{const int p=Ped();if(!p)return;static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetPedInfiniteAmmo,p,std::int32_t{0},std::uint32_t{0}));static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetPedInfiniteAmmoClip,p,std::int32_t{0}));}));
+        if(!m_Ready.exchange(false))return;
+        m_InfiniteAmmo=false;
+        m_InfiniteClip=false;
+        m_ExplosiveAmmo=false;
+        m_Aimbot=false;
+        m_LaserSight=false;
+        m_LoopQueued=false;
+        WeaponAimPatches::Get().RestoreAll();
+        if(Game::GameRuntime::Get().NativeReady()) {
+            static_cast<void>(Game::GameRuntime::Get().Enqueue([]{
+                static_cast<void>(NativeInvoker::InvokeVoid(NativeId::EnableLaserSightRendering,std::int32_t{0}));
+                const int p=Ped();
+                if(!p)return;
+                static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetPedInfiniteAmmo,p,std::int32_t{0},std::uint32_t{0}));
+                static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetPedInfiniteAmmoClip,p,std::int32_t{0}));
+            }));
+        }
+        WeaponAimPatches::Get().Shutdown();
     }
 }
