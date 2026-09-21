@@ -3,6 +3,7 @@
 #include "../backend/BackendHub.hpp"
 #include "../core/Logger.hpp"
 #include "../game/GameRuntime.hpp"
+#include "../features/player/PlayerService.hpp"
 #include "../hooking/HookManager.hpp"
 #include "../render/Renderer.hpp"
 
@@ -30,6 +31,7 @@ namespace TutonesV2::App
 
         if (!Backend::BackendHub::Get().Initialize()
             || !Game::GameRuntime::Get().Initialize()
+            || !Features::Player::PlayerService::Get().Initialize()
             || !Render::Renderer::Get().Initialize()
             || !Hooking::HookManager::Get().Initialize())
         {
@@ -48,6 +50,7 @@ namespace TutonesV2::App
             return;
 
         Core::Logger::Get().Info("core", "Tutones Menu V2 shutting down");
+        Features::Player::PlayerService::Get().Shutdown();
         Hooking::HookManager::Get().Shutdown();
         Render::Renderer::Get().Shutdown();
         Game::GameRuntime::Get().Shutdown();
