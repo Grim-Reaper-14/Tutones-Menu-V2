@@ -396,8 +396,9 @@ namespace TutonesV2::UI
                 status = service.SetTargetDrivers(targetDrivers) ? "Target Drivers updated" : "Target Drivers rejected";
             ImGui::EndDisabled();
 
-            if (ImGui::Checkbox("Laser Sight", &laserSight))
-                status = service.SetLaserSight(laserSight) ? "Laser Sight updated" : "Laser Sight rejected";
+            if (ImGui::Checkbox("Laser Sight (Native)", &laserSight))
+                status = service.SetLaserSight(laserSight) ? "Native Laser Sight updated" : "Native Laser Sight rejected";
+            ImGui::TextDisabled("Uses ENABLE_LASER_SIGHT_RENDERING");
 
             ImGui::SeparatorText("Weapon Utilities");
             if (ImGui::Button("Give All Weapons"))
