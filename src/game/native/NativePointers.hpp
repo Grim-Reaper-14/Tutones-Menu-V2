@@ -22,12 +22,18 @@ namespace TutonesV2::Game::Native
         [[nodiscard]] InitNativeTablesFn InitNativeTables() const noexcept;
         [[nodiscard]] RunScriptThreadsFn RunScriptThreads() const noexcept;
         [[nodiscard]] Types::AtArray<Types::ScriptThread*>* ScriptThreads() const noexcept;
+        [[nodiscard]] std::int64_t** ScriptGlobals() const noexcept;
+        [[nodiscard]] bool* IsSessionStarted() const noexcept;
+        [[nodiscard]] std::uint32_t* NetworkTime() const noexcept;
 
     private:
         Memory::ModuleView m_Module;
         InitNativeTablesFn m_InitNativeTables{};
         RunScriptThreadsFn m_RunScriptThreads{};
         Types::AtArray<Types::ScriptThread*>* m_ScriptThreads{};
+        std::int64_t** m_ScriptGlobals{};
+        bool* m_IsSessionStarted{};
+        std::uint32_t* m_NetworkTime{};
         std::atomic_bool m_Resolved{};
     };
 }

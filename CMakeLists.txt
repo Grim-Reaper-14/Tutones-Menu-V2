@@ -52,6 +52,7 @@ add_library(Tutones-Menu-V2 SHARED
     src/game/native/NativePointers.cpp
     src/game/native/NativeRegistry.cpp
     src/features/player/PlayerService.cpp
+    src/features/player/SelfOnlineService.cpp
     src/hooking/HookManager.cpp
     src/render/Renderer.cpp
     src/ui/Menu.cpp

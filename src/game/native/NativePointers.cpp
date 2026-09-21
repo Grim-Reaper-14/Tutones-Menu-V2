@@ -80,6 +80,48 @@ namespace TutonesV2::Game::Native
         }
         m_ScriptThreads = reinterpret_cast<Types::AtArray<Types::ScriptThread*>*>(scriptThreadsAddress);
 
+        constexpr auto scriptGlobalsPattern = "48 8B 8E B8 00 00 00 48 8D 15 ? ? ? ? 49 89 D8";
+        if (auto* match = Memory::PatternScanner::FindFirst(m_Module, scriptGlobalsPattern))
+        {
+            auto* address = Memory::PatternScanner::ResolveRip(match + 0x0A);
+            if (address && m_Module.Contains(address))
+                m_ScriptGlobals = reinterpret_cast<std::int64_t**>(address);
+            else
+                Core::Logger::Get().Warn("native.ptr", "ScriptGlobals resolved outside GTA module image");
+        }
+        else
+        {
+            Core::Logger::Get().Warn("native.ptr", "ScriptGlobals pattern was not found; Online Self globals disabled");
+        }
+
+        constexpr auto sessionStartedPattern = "0F B6 05 ? ? ? ? 0A 05 ? ? ? ? 75 2A";
+        if (auto* match = Memory::PatternScanner::FindFirst(m_Module, sessionStartedPattern))
+        {
+            auto* address = Memory::PatternScanner::ResolveRip(match + 3);
+            if (address && m_Module.Contains(address))
+                m_IsSessionStarted = reinterpret_cast<bool*>(address);
+            else
+                Core::Logger::Get().Warn("native.ptr", "IsSessionStarted resolved outside GTA module image");
+        }
+        else
+        {
+            Core::Logger::Get().Warn("native.ptr", "IsSessionStarted pattern was not found; Online Self globals disabled");
+        }
+
+        constexpr auto networkTimePattern = "89 05 ? ? ? ? 80 3D ? ? ? ? ? 0F 84 ? ? ? ? E9";
+        if (auto* match = Memory::PatternScanner::FindFirst(m_Module, networkTimePattern))
+        {
+            auto* address = Memory::PatternScanner::ResolveRip(match + 2);
+            if (address && m_Module.Contains(address))
+                m_NetworkTime = reinterpret_cast<std::uint32_t*>(address);
+            else
+                Core::Logger::Get().Warn("native.ptr", "NetworkTime resolved outside GTA module image");
+        }
+        else
+        {
+            Core::Logger::Get().Warn("native.ptr", "NetworkTime pattern was not found; Off Radar disabled");
+        }
+
         m_Resolved.store(true, std::memory_order_release);
         Core::Logger::Get().Info(
             "native.ptr",
@@ -97,6 +139,9 @@ namespace TutonesV2::Game::Native
         m_InitNativeTables = nullptr;
         m_RunScriptThreads = nullptr;
         m_ScriptThreads = nullptr;
+        m_ScriptGlobals = nullptr;
+        m_IsSessionStarted = nullptr;
+        m_NetworkTime = nullptr;
         m_Module.Reset();
     }
 
@@ -118,5 +163,20 @@ namespace TutonesV2::Game::Native
     Types::AtArray<Types::ScriptThread*>* NativePointers::ScriptThreads() const noexcept
     {
         return m_ScriptThreads;
+    }
+
+    std::int64_t** NativePointers::ScriptGlobals() const noexcept
+    {
+        return m_ScriptGlobals;
+    }
+
+    bool* NativePointers::IsSessionStarted() const noexcept
+    {
+        return m_IsSessionStarted;
+    }
+
+    std::uint32_t* NativePointers::NetworkTime() const noexcept
+    {
+        return m_NetworkTime;
     }
 }
