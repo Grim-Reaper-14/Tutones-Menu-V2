@@ -621,6 +621,6 @@ namespace TutonesV2::Render
         if (IDXGISwapChain* swapChain = m_PrimarySwapChain.exchange(nullptr, std::memory_order_acq_rel))
             swapChain->Release();
 
-        m_F5Down.store(false, std::memory_order_release);
+        m_ToggleKeyDown.store(false, std::memory_order_release);
     }
 }
