@@ -1,151 +1,531 @@
 #include "TeleportService.hpp"
+
 #include "../../game/GameRuntime.hpp"
 #include "../../game/native/NativeInvoker.hpp"
+
+#include <array>
 #include <cmath>
+#include <cstdint>
+#include <string>
 #include <utility>
 
 namespace TutonesV2::Features::World
 {
-    namespace {
+    namespace
+    {
         using Game::Native::NativeId;
         using Game::Native::NativeInvoker;
-        constexpr int MaxAttempts=120;
+        using NativeVector3 = Game::Native::NativeVector3;
 
-        bool Exists(int entity) noexcept {
-            if(!entity)return false;
-            const auto e=NativeInvoker::Invoke<std::int32_t>(NativeId::DoesEntityExist,entity);
-            return e&&*e;
+        constexpr float MaxGroundCheck = 1000.0f;
+        constexpr int MaxGroundAttempts = 20;
+
+        // Current YimMenuV2 TpToObjective sprite order.
+        constexpr std::array<int, 17> ObjectiveSprites{{
+            1,   // RADAR_LEVEL
+            0,   // RADAR_HIGHER
+            2,   // RADAR_LOWER
+            143, // RADAR_OBJECTIVE_BLUE
+            144, // RADAR_OBJECTIVE_GREEN
+            145, // RADAR_OBJECTIVE_RED
+            146, // RADAR_OBJECTIVE_YELLOW
+            478, // RADAR_CONTRABAND
+            535, // RADAR_TARGET_A
+            536, // RADAR_TARGET_B
+            537, // RADAR_TARGET_C
+            538, // RADAR_TARGET_D
+            539, // RADAR_TARGET_E
+            540, // RADAR_TARGET_F
+            541, // RADAR_TARGET_G
+            542, // RADAR_TARGET_H
+            549, // RADAR_PICKUP_MACHINEGUN
+        }};
+
+        [[nodiscard]] bool EntityExists(int entity) noexcept
+        {
+            if (entity == 0)
+                return false;
+
+            const auto exists = NativeInvoker::Invoke<std::int32_t>(NativeId::DoesEntityExist, entity);
+            return exists && *exists != 0;
         }
     }
 
-    TeleportService& TeleportService::Get() noexcept { static TeleportService s;return s; }
-    bool TeleportService::Initialize() noexcept {m_Pending=false;{std::scoped_lock l(m_Mutex);m_Snapshot={};}m_Ready=true;return true;}
-    void TeleportService::Shutdown() noexcept {m_Ready=false;if(m_Pending&&Game::GameRuntime::Get().NativeReady())static_cast<void>(Game::GameRuntime::Get().Enqueue([this]{Restore("Teleport cancelled during shutdown");}));}
-    bool TeleportService::IsReady() const noexcept{return m_Ready.load();}
-    TeleportSnapshot TeleportService::Snapshot() const{std::scoped_lock l(m_Mutex);auto s=m_Snapshot;s.pending=m_Pending.load();return s;}
+    TeleportService& TeleportService::Get() noexcept
+    {
+        static TeleportService instance;
+        return instance;
+    }
 
-    TeleportService::Target TeleportService::ResolveTarget() noexcept {
-        Target t{};
-        const auto ped=NativeInvoker::Invoke<std::int32_t>(NativeId::PlayerPedId);
-        if(!ped||!*ped)return t;
-        t.entity=*ped;
-        const auto in=NativeInvoker::Invoke<std::int32_t>(NativeId::IsPedInAnyVehicle,*ped,std::int32_t{0});
-        if(in&&*in){
-            const auto v=NativeInvoker::Invoke<std::int32_t>(NativeId::GetVehiclePedIsIn,*ped,std::int32_t{0});
-            if(v&&*v&&Exists(*v)){t.entity=*v;t.vehicle=*v;t.inVehicle=true;}
+    bool TeleportService::Initialize() noexcept
+    {
+        m_Pending.store(false, std::memory_order_release);
+        m_AutoWaypoint.store(false, std::memory_order_release);
+        m_AutoLoopQueued.store(false, std::memory_order_release);
+        m_GroundZ = 0.0f;
+        m_GroundAttempt = 0;
+        m_FoundGround = false;
+        m_ResolveCoords = {};
+        m_ResolveLabel.clear();
+
+        {
+            std::scoped_lock lock(m_Mutex);
+            m_Snapshot = {};
         }
-        return t;
-    }
 
-    bool TeleportService::QueueWaypoint() noexcept {
-        if(!IsReady()||!Game::GameRuntime::Get().NativeReady())return false;
-        bool expected=false;if(!m_Pending.compare_exchange_strong(expected,true))return false;
-        {std::scoped_lock l(m_Mutex);m_Snapshot.message="Resolving waypoint...";m_Snapshot.lastSucceeded=false;}
-        if(Game::GameRuntime::Get().Enqueue([this]{
-            const auto active=NativeInvoker::Invoke<std::int32_t>(NativeId::IsWaypointActive);
-            if(!active||!*active){Finish(false,"Set a waypoint first");return;}
-            const auto en=NativeInvoker::Invoke<std::int32_t>(NativeId::GetWaypointBlipEnumId);
-            if(!en||!*en){Finish(false,"Waypoint blip type unavailable");return;}
-            const auto blip=NativeInvoker::Invoke<std::int32_t>(NativeId::GetClosestBlipInfoId,*en);
-            if(!blip||!*blip){Finish(false,"Waypoint blip unavailable");return;}
-            const auto exists=NativeInvoker::Invoke<std::int32_t>(NativeId::DoesBlipExist,*blip);
-            if(!exists||!*exists){Finish(false,"Waypoint disappeared");return;}
-            const auto coords=NativeInvoker::Invoke<Game::Native::NativeVector3>(NativeId::GetBlipCoords,*blip);
-            if(!coords){Finish(false,"Waypoint coordinates unavailable");return;}
-            BeginTeleport(*coords,true,"Waypoint teleport");
-        }))return true;
-        m_Pending=false;return false;
-    }
-
-    bool TeleportService::QueueCoordinates(float x,float y,float z,bool resolveGround) noexcept {
-        if(!IsReady()||!Game::GameRuntime::Get().NativeReady()||!std::isfinite(x)||!std::isfinite(y)||!std::isfinite(z))return false;
-        bool expected=false;if(!m_Pending.compare_exchange_strong(expected,true))return false;
-        {std::scoped_lock l(m_Mutex);m_Snapshot.message="Coordinate teleport queued";m_Snapshot.lastSucceeded=false;}
-        if(Game::GameRuntime::Get().Enqueue([this,x,y,z,resolveGround]{BeginTeleport({x,y,z},resolveGround,"Coordinate teleport");}))return true;
-        m_Pending=false;return false;
-    }
-
-    bool TeleportService::BeginTeleport(Game::Native::NativeVector3 coords,bool resolveGround,std::string label) noexcept {
-        m_Target=ResolveTarget();
-        if(!m_Target.entity){Finish(false,"Player/vehicle target unavailable");return false;}
-        const auto original=NativeInvoker::Invoke<Game::Native::NativeVector3>(NativeId::GetEntityCoords,m_Target.entity,std::int32_t{0});
-        if(!original){Finish(false,"Could not capture original position");return false;}
-        m_Original=*original;m_Destination=coords;m_ResolveGround=resolveGround;m_Label=std::move(label);m_Attempts=0;
-        if(!Freeze(true)){Finish(false,"Could not freeze teleport target");return false;}
-        static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetEntityVelocity,m_Target.entity,0.0f,0.0f,0.0f));
-
-        if(resolveGround){
-            m_Destination.z=1000.0f;
-            StreamCollision(m_Destination);
-            if(!Move(m_Destination)){Restore("Initial teleport staging failed");return false;}
-            {std::scoped_lock l(m_Mutex);m_Snapshot.message=m_Label+": resolving ground/collision";}
-            if(!Game::GameRuntime::Get().Enqueue([this]{GroundTick();}))Restore("Ground-resolution queue unavailable");
-        }else{
-            StreamCollision(m_Destination);
-            if(!Move(m_Destination)){Restore("Teleport placement failed");return false;}
-            {std::scoped_lock l(m_Mutex);m_Snapshot.message=m_Label+": streaming collision";}
-            if(!Game::GameRuntime::Get().Enqueue([this]{SettleTick();}))Restore("Collision-settle queue unavailable");
-        }
+        m_Ready.store(true, std::memory_order_release);
         return true;
     }
 
-    void TeleportService::GroundTick() noexcept {
-        if(!m_Pending||!Exists(m_Target.entity)){Restore("Teleport target disappeared");return;}
-        StreamCollision(m_Destination);
-        float ground{};
-        auto gotGround=NativeInvoker::Invoke<std::int32_t>(NativeId::GetGroundZFor3DCoord,m_Destination.x,m_Destination.y,1000.0f,&ground,std::int32_t{0},std::int32_t{0});
-        float water{};
-        auto gotWater=NativeInvoker::Invoke<std::int32_t>(NativeId::GetWaterHeight,m_Destination.x,m_Destination.y,m_Destination.z,&water);
-        if(gotGround&&*gotGround&&std::isfinite(ground)){
-            m_Destination.z=ground+1.0f;
-            static_cast<void>(Move(m_Destination));
-            m_Attempts=0;
-            if(!Game::GameRuntime::Get().Enqueue([this]{SettleTick();}))Restore("Collision-settle queue unavailable");
-            return;
-        }
-        if(gotWater&&*gotWater&&std::isfinite(water)){
-            m_Destination.z=water;
-            static_cast<void>(Move(m_Destination));
-            m_Attempts=0;
-            if(!Game::GameRuntime::Get().Enqueue([this]{SettleTick();}))Restore("Collision-settle queue unavailable");
-            return;
-        }
-        if(++m_Attempts>=MaxAttempts){Restore("Ground/collision did not resolve; original position restored");return;}
-        if(!Game::GameRuntime::Get().Enqueue([this]{GroundTick();}))Restore("Ground-resolution queue unavailable");
+    void TeleportService::Shutdown() noexcept
+    {
+        m_Ready.store(false, std::memory_order_release);
+        m_AutoWaypoint.store(false, std::memory_order_release);
+        m_AutoLoopQueued.store(false, std::memory_order_release);
+        m_Pending.store(false, std::memory_order_release);
+
+        std::scoped_lock lock(m_Mutex);
+        m_Snapshot.pending = false;
+        m_Snapshot.autoWaypointEnabled = false;
+        m_Snapshot.message = "Offline";
     }
 
-    void TeleportService::SettleTick() noexcept {
-        if(!m_Pending||!Exists(m_Target.entity)){Restore("Teleport target disappeared");return;}
-        StreamCollision(m_Destination);
-        static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetEntityVelocity,m_Target.entity,0.0f,0.0f,0.0f));
-        const auto loaded=NativeInvoker::Invoke<std::int32_t>(NativeId::HasCollisionLoadedAroundEntity,m_Target.entity);
-        if(loaded&&*loaded){
-            static_cast<void>(Move(m_Destination));
-            if(m_Target.inVehicle)static_cast<void>(NativeInvoker::Invoke<std::int32_t>(NativeId::SetVehicleOnGroundProperly,m_Target.vehicle,5.0f));
-            static_cast<void>(Freeze(false));
-            static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetEntityVelocity,m_Target.entity,0.0f,0.0f,0.0f));
-            Finish(true,m_Label+" complete");
-            return;
-        }
-        if(++m_Attempts>=MaxAttempts){Restore("Destination collision never became safe; original position restored");return;}
-        if(!Game::GameRuntime::Get().Enqueue([this]{SettleTick();}))Restore("Collision-settle queue unavailable");
+    bool TeleportService::IsReady() const noexcept
+    {
+        return m_Ready.load(std::memory_order_acquire);
     }
 
-    bool TeleportService::Move(const Game::Native::NativeVector3& p) noexcept {
-        return Exists(m_Target.entity)&&NativeInvoker::InvokeVoid(NativeId::SetEntityCoordsNoOffset,m_Target.entity,p.x,p.y,p.z,std::int32_t{1},std::int32_t{1},std::int32_t{1});
+    TeleportSnapshot TeleportService::Snapshot() const
+    {
+        std::scoped_lock lock(m_Mutex);
+        auto snapshot = m_Snapshot;
+        snapshot.pending = m_Pending.load(std::memory_order_acquire);
+        snapshot.autoWaypointEnabled = m_AutoWaypoint.load(std::memory_order_acquire);
+        return snapshot;
     }
-    bool TeleportService::Freeze(bool enabled) noexcept {
-        return Exists(m_Target.entity)&&NativeInvoker::InvokeVoid(NativeId::FreezeEntityPosition,m_Target.entity,std::int32_t{enabled?1:0});
+
+    bool TeleportService::AcquireAction(std::string message) noexcept
+    {
+        if (!IsReady() || !Game::GameRuntime::Get().NativeReady())
+            return false;
+
+        bool expected = false;
+        if (!m_Pending.compare_exchange_strong(expected, true, std::memory_order_acq_rel))
+            return false;
+
+        std::scoped_lock lock(m_Mutex);
+        m_Snapshot.pending = true;
+        m_Snapshot.lastSucceeded = false;
+        m_Snapshot.message = std::move(message);
+        return true;
     }
-    void TeleportService::StreamCollision(const Game::Native::NativeVector3& p) noexcept {
-        static_cast<void>(NativeInvoker::InvokeVoid(NativeId::RequestCollisionAtCoord,p.x,p.y,p.z));
+
+    int TeleportService::LocalPed() const noexcept
+    {
+        const auto ped = NativeInvoker::Invoke<std::int32_t>(NativeId::PlayerPedId);
+        return ped ? *ped : 0;
     }
-    void TeleportService::Restore(std::string message) noexcept {
-        if(Exists(m_Target.entity)){StreamCollision(m_Original);static_cast<void>(Move(m_Original));static_cast<void>(Freeze(false));static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetEntityVelocity,m_Target.entity,0.0f,0.0f,0.0f));}
-        Finish(false,std::move(message));
+
+    int TeleportService::TeleportEntity(int ped) const noexcept
+    {
+        if (ped == 0 || !EntityExists(ped))
+            return 0;
+
+        // Match YimMenuV2 Ped::TeleportTo: active vehicle first, otherwise the ped.
+        const auto inVehicle = NativeInvoker::Invoke<std::int32_t>(
+            NativeId::IsPedInAnyVehicle,
+            ped,
+            std::int32_t{0});
+
+        if (inVehicle && *inVehicle != 0)
+        {
+            const auto vehicle = NativeInvoker::Invoke<std::int32_t>(
+                NativeId::GetVehiclePedIsUsing,
+                ped);
+
+            if (vehicle && *vehicle != 0 && EntityExists(*vehicle))
+                return *vehicle;
+        }
+
+        return ped;
     }
-    void TeleportService::Finish(bool success,std::string message) noexcept {
-        m_Pending=false;m_Target={};m_Attempts=0;
-        std::scoped_lock l(m_Mutex);m_Snapshot.lastSucceeded=success;m_Snapshot.message=std::move(message);
+
+    bool TeleportService::QueueWaypoint() noexcept
+    {
+        if (!AcquireAction("Resolving waypoint..."))
+            return false;
+
+        if (Game::GameRuntime::Get().Enqueue([this] { ResolveWaypoint(false); }))
+            return true;
+
+        Finish(false, "Game-thread queue unavailable");
+        return false;
+    }
+
+    bool TeleportService::QueueObjective() noexcept
+    {
+        if (!AcquireAction("Resolving objective..."))
+            return false;
+
+        if (Game::GameRuntime::Get().Enqueue([this] {
+                for (const int sprite : ObjectiveSprites)
+                {
+                    const auto blip = NativeInvoker::Invoke<std::int32_t>(
+                        NativeId::GetClosestBlipInfoId,
+                        sprite);
+                    if (!blip || *blip == 0)
+                        continue;
+
+                    const auto coords = NativeInvoker::Invoke<NativeVector3>(
+                        NativeId::GetBlipCoords,
+                        *blip);
+                    if (!coords)
+                        continue;
+
+                    auto destination = *coords;
+                    destination.z += 1.0f;
+                    TeleportResolved(destination, "Objective teleport");
+                    return;
+                }
+
+                Finish(false, "No supported objective blip is active");
+            }))
+        {
+            return true;
+        }
+
+        Finish(false, "Game-thread queue unavailable");
+        return false;
+    }
+
+    bool TeleportService::QueueCoordinates(
+        float x,
+        float y,
+        float z,
+        bool resolveGround) noexcept
+    {
+        if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z))
+            return false;
+
+        if (!AcquireAction("Coordinate teleport queued"))
+            return false;
+
+        if (Game::GameRuntime::Get().Enqueue([this, x, y, z, resolveGround] {
+                NativeVector3 coords{x, y, z};
+                if (resolveGround)
+                    BeginZResolution(coords, "Coordinate teleport");
+                else
+                    TeleportResolved(coords, "Coordinate teleport");
+            }))
+        {
+            return true;
+        }
+
+        Finish(false, "Game-thread queue unavailable");
+        return false;
+    }
+
+    bool TeleportService::QueueDirectional(
+        float right,
+        float forward,
+        float up) noexcept
+    {
+        if (!std::isfinite(right) || !std::isfinite(forward) || !std::isfinite(up))
+            return false;
+
+        if (!AcquireAction("Directional teleport queued"))
+            return false;
+
+        if (Game::GameRuntime::Get().Enqueue([this, right, forward, up] {
+                const int ped = LocalPed();
+                if (ped == 0)
+                {
+                    Finish(false, "Local player ped is unavailable");
+                    return;
+                }
+
+                const auto coords = NativeInvoker::Invoke<NativeVector3>(
+                    NativeId::GetOffsetFromEntityInWorldCoords,
+                    ped,
+                    right,
+                    forward,
+                    up);
+
+                if (!coords)
+                {
+                    Finish(false, "Directional offset could not be resolved");
+                    return;
+                }
+
+                TeleportResolved(*coords, "Directional teleport");
+            }))
+        {
+            return true;
+        }
+
+        Finish(false, "Game-thread queue unavailable");
+        return false;
+    }
+
+    void TeleportService::SetAutoWaypoint(bool enabled) noexcept
+    {
+        m_AutoWaypoint.store(enabled, std::memory_order_release);
+
+        {
+            std::scoped_lock lock(m_Mutex);
+            m_Snapshot.autoWaypointEnabled = enabled;
+            if (!m_Pending.load(std::memory_order_acquire))
+                m_Snapshot.message = enabled
+                    ? "Auto waypoint teleport enabled"
+                    : "Auto waypoint teleport disabled";
+        }
+
+        if (enabled)
+            EnsureAutoLoop();
+    }
+
+    void TeleportService::ResolveWaypoint(bool automatic) noexcept
+    {
+        const auto active = NativeInvoker::Invoke<std::int32_t>(NativeId::IsWaypointActive);
+        if (!active || *active == 0)
+        {
+            Finish(false, automatic ? "Auto waypoint disappeared" : "Set a waypoint first");
+            return;
+        }
+
+        const auto waypointEnum = NativeInvoker::Invoke<std::int32_t>(
+            NativeId::GetWaypointBlipEnumId);
+        if (!waypointEnum || *waypointEnum == 0)
+        {
+            Finish(false, "Waypoint blip type is unavailable");
+            return;
+        }
+
+        const auto blip = NativeInvoker::Invoke<std::int32_t>(
+            NativeId::GetClosestBlipInfoId,
+            *waypointEnum);
+        if (!blip || *blip == 0)
+        {
+            Finish(false, "Waypoint blip is unavailable");
+            return;
+        }
+
+        const auto coords = NativeInvoker::Invoke<NativeVector3>(
+            NativeId::GetBlipCoords,
+            *blip);
+        if (!coords)
+        {
+            Finish(false, "Waypoint coordinates are unavailable");
+            return;
+        }
+
+        if (automatic)
+            static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetWaypointOff));
+
+        BeginZResolution(
+            *coords,
+            automatic ? "Auto waypoint teleport" : "Waypoint teleport");
+    }
+
+    void TeleportService::BeginZResolution(
+        NativeVector3 coords,
+        std::string label) noexcept
+    {
+        // Mirrors YimMenuV2 ResolveZCoordinate: collision request + up to 20
+        // scheduler yields, then water and approximate-height fallbacks.
+        m_ResolveCoords = coords;
+        m_GroundZ = coords.z;
+        m_GroundAttempt = 0;
+        m_FoundGround = false;
+        m_ResolveLabel = std::move(label);
+
+        {
+            std::scoped_lock lock(m_Mutex);
+            m_Snapshot.message = m_ResolveLabel + ": resolving ground";
+        }
+
+        ResolveZTick();
+    }
+
+    void TeleportService::ResolveZTick() noexcept
+    {
+        if (!m_Pending.load(std::memory_order_acquire))
+            return;
+
+        static_cast<void>(NativeInvoker::InvokeVoid(
+            NativeId::RequestCollisionAtCoord,
+            m_ResolveCoords.x,
+            m_ResolveCoords.y,
+            m_ResolveCoords.z));
+
+        float groundZ = m_GroundZ;
+        const auto groundFound = NativeInvoker::Invoke<std::int32_t>(
+            NativeId::GetGroundZFor3DCoord,
+            m_ResolveCoords.x,
+            m_ResolveCoords.y,
+            MaxGroundCheck,
+            &groundZ,
+            std::int32_t{0},
+            std::int32_t{0});
+
+        if (groundFound && *groundFound != 0 && std::isfinite(groundZ))
+        {
+            m_GroundZ = groundZ;
+            m_ResolveCoords.z = groundZ + 1.0f;
+            m_FoundGround = true;
+            FinishZResolution();
+            return;
+        }
+
+        if ((m_GroundAttempt % 3) == 0)
+            m_GroundZ += 25.0f;
+
+        ++m_GroundAttempt;
+        if (m_GroundAttempt < MaxGroundAttempts)
+        {
+            if (Game::GameRuntime::Get().Enqueue([this] { ResolveZTick(); }))
+                return;
+
+            Finish(false, "Ground-resolution queue unavailable");
+            return;
+        }
+
+        FinishZResolution();
+    }
+
+    void TeleportService::FinishZResolution() noexcept
+    {
+        float waterHeight{};
+        const auto waterFound = NativeInvoker::Invoke<std::int32_t>(
+            NativeId::GetWaterHeight,
+            m_ResolveCoords.x,
+            m_ResolveCoords.y,
+            m_ResolveCoords.z,
+            &waterHeight);
+
+        if (waterFound && *waterFound != 0 && std::isfinite(waterHeight))
+        {
+            m_ResolveCoords.z = waterHeight;
+        }
+        else if (!m_FoundGround)
+        {
+            const auto approximateHeight = NativeInvoker::Invoke<float>(
+                NativeId::GetApproxHeightForPoint,
+                m_ResolveCoords.x,
+                m_ResolveCoords.y);
+
+            if (approximateHeight && std::isfinite(*approximateHeight))
+                m_ResolveCoords.z = *approximateHeight;
+        }
+
+        TeleportResolved(m_ResolveCoords, m_ResolveLabel);
+    }
+
+    void TeleportService::TeleportResolved(
+        const NativeVector3& coords,
+        std::string label) noexcept
+    {
+        if (!std::isfinite(coords.x)
+            || !std::isfinite(coords.y)
+            || !std::isfinite(coords.z))
+        {
+            Finish(false, std::move(label) + " failed: invalid coordinates");
+            return;
+        }
+
+        const int ped = LocalPed();
+        const int entity = TeleportEntity(ped);
+        if (entity == 0)
+        {
+            Finish(false, std::move(label) + " failed: local player/vehicle unavailable");
+            return;
+        }
+
+        // Match YimMenuV2 Entity::SetPosition.
+        const bool moved = NativeInvoker::InvokeVoid(
+            NativeId::SetEntityCoordsNoOffset,
+            entity,
+            coords.x,
+            coords.y,
+            coords.z,
+            std::int32_t{1},
+            std::int32_t{1},
+            std::int32_t{1});
+
+        Finish(
+            moved,
+            std::move(label) + (moved ? " complete" : " failed"));
+    }
+
+    void TeleportService::EnsureAutoLoop() noexcept
+    {
+        if (!IsReady() || !m_AutoWaypoint.load(std::memory_order_acquire))
+            return;
+
+        bool expected = false;
+        if (!m_AutoLoopQueued.compare_exchange_strong(
+                expected,
+                true,
+                std::memory_order_acq_rel))
+        {
+            return;
+        }
+
+        if (!Game::GameRuntime::Get().Enqueue([this] { AutoTick(); }))
+            m_AutoLoopQueued.store(false, std::memory_order_release);
+    }
+
+    void TeleportService::AutoTick() noexcept
+    {
+        if (!IsReady() || !m_AutoWaypoint.load(std::memory_order_acquire))
+        {
+            m_AutoLoopQueued.store(false, std::memory_order_release);
+            return;
+        }
+
+        if (!m_Pending.load(std::memory_order_acquire))
+        {
+            const auto active = NativeInvoker::Invoke<std::int32_t>(NativeId::IsWaypointActive);
+            if (active && *active != 0)
+            {
+                bool expected = false;
+                if (m_Pending.compare_exchange_strong(
+                        expected,
+                        true,
+                        std::memory_order_acq_rel))
+                {
+                    {
+                        std::scoped_lock lock(m_Mutex);
+                        m_Snapshot.pending = true;
+                        m_Snapshot.lastSucceeded = false;
+                        m_Snapshot.message = "Auto waypoint detected";
+                    }
+
+                    ResolveWaypoint(true);
+                }
+            }
+        }
+
+        if (IsReady()
+            && m_AutoWaypoint.load(std::memory_order_acquire)
+            && Game::GameRuntime::Get().Enqueue([this] { AutoTick(); }))
+        {
+            return;
+        }
+
+        m_AutoLoopQueued.store(false, std::memory_order_release);
+    }
+
+    void TeleportService::Finish(bool success, std::string message) noexcept
+    {
+        m_Pending.store(false, std::memory_order_release);
+        m_GroundAttempt = 0;
+        m_FoundGround = false;
+        m_ResolveLabel.clear();
+
+        std::scoped_lock lock(m_Mutex);
+        m_Snapshot.pending = false;
+        m_Snapshot.lastSucceeded = success;
+        m_Snapshot.message = std::move(message);
     }
 }
