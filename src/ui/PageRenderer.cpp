@@ -5,6 +5,9 @@
 #include "../features/player/PlayerService.hpp"
 #include "../features/player/PlayerStatsService.hpp"
 #include "../features/player/SelfOnlineService.hpp"
+#include "../features/vehicle/VehicleService.hpp"
+#include "../features/weapon/WeaponService.hpp"
+#include "../features/world/TeleportService.hpp"
 #include "../game/GameRuntime.hpp"
 
 #include <imgui.h>
@@ -345,27 +348,101 @@ namespace TutonesV2::UI
             ImGui::TextDisabled("Request Job remains disabled until a current Enhanced job-request path is verified.");
         }
 
+        void RenderWeapons() noexcept
+        {
+            auto& service = Features::Weapon::WeaponService::Get();
+            const bool nativeReady = Game::GameRuntime::Get().NativeReady();
+            static std::string status{"Ready"};
+            static char weaponName[64]{"WEAPON_CARBINERIFLE"};
+
+            ImGui::SeparatorText("Weapon Runtime");
+            ImGui::BulletText("Native runtime: %s", nativeReady ? "READY" : "WAITING");
+            ImGui::BeginDisabled(!service.IsReady() || !nativeReady);
+
+            bool infiniteAmmo = service.InfiniteAmmo();
+            bool infiniteClip = service.InfiniteClip();
+            bool explosiveAmmo = service.ExplosiveAmmo();
+            if (ImGui::Checkbox("Infinite Ammo", &infiniteAmmo))
+                status = service.SetInfiniteAmmo(infiniteAmmo) ? "Infinite Ammo updated" : "Infinite Ammo rejected";
+            if (ImGui::Checkbox("Infinite Clip", &infiniteClip))
+                status = service.SetInfiniteClip(infiniteClip) ? "Infinite Clip updated" : "Infinite Clip rejected";
+            if (ImGui::Checkbox("Explosive Ammo", &explosiveAmmo))
+                status = service.SetExplosiveAmmo(explosiveAmmo) ? "Explosive Ammo updated" : "Explosive Ammo rejected";
+
+            ImGui::SeparatorText("Weapon Utilities");
+            if (ImGui::Button("Give All Weapons"))
+                status = service.QueueGiveAllWeapons() ? "Give All Weapons queued" : "Give All Weapons rejected";
+            ImGui::SameLine();
+            if (ImGui::Button("Max Ammo"))
+                status = service.QueueMaxAmmo() ? "Max Ammo queued" : "Max Ammo rejected";
+
+            ImGui::SetNextItemWidth(260.0f);
+            ImGui::InputText("Weapon Name", weaponName, sizeof(weaponName));
+            ImGui::SameLine();
+            if (ImGui::Button("Give Weapon"))
+                status = service.QueueGiveWeapon(weaponName) ? "Give Weapon queued" : "Give Weapon rejected";
+
+            ImGui::EndDisabled();
+            ImGui::TextWrapped("Last weapon action: %s", status.c_str());
+        }
+
         void RenderVehicle() noexcept
         {
-            PlannedSection("Current Vehicle", "Actions for the current or last vehicle will be grouped here.", "VehicleService");
-            PlannedSection("Spawner", "Vehicle search, categories, favorites, and spawn requests will use backend commands.", "VehicleService / NativeRuntime");
-            PlannedSection("Customization", "Vehicle appearance and handling controls will remain separate from menu rendering.", "VehicleService");
+            auto& service = Features::Vehicle::VehicleService::Get();
+            const auto snapshot = service.Snapshot();
+            const bool nativeReady = Game::GameRuntime::Get().NativeReady();
+            static char modelName[64]{"adder"};
+            static bool enterVehicle = true;
+            static bool networked = true;
+
+            ImGui::SeparatorText("Vehicle Spawner");
+            ImGui::BeginDisabled(!service.IsReady() || !nativeReady || snapshot.busy);
+            ImGui::SetNextItemWidth(260.0f);
+            ImGui::InputText("Vehicle Model", modelName, sizeof(modelName));
+            ImGui::Checkbox("Enter spawned vehicle", &enterVehicle);
+            ImGui::SameLine();
+            ImGui::Checkbox("Networked / persistent", &networked);
+            if (ImGui::Button("Spawn Vehicle"))
+                static_cast<void>(service.QueueSpawn(modelName, enterVehicle, networked));
+            ImGui::EndDisabled();
+
+            ImGui::TextDisabled("%s", snapshot.message.c_str());
+            if (snapshot.lastSpawnedVehicle)
+                ImGui::Text("Last spawned handle: %d", snapshot.lastSpawnedVehicle);
+
+            ImGui::SeparatorText("Current Vehicle");
+            ImGui::BeginDisabled(!service.IsReady() || !nativeReady);
+            if (ImGui::Button("Repair Current"))
+                static_cast<void>(service.QueueRepairCurrent());
+            ImGui::SameLine();
+            if (ImGui::Button("Clean Current"))
+                static_cast<void>(service.QueueCleanCurrent());
+            ImGui::EndDisabled();
         }
 
         void RenderTeleport() noexcept
         {
-            PlannedSection("Quick Teleports", "Common locations will be exposed as simple backend requests.", "TeleportService");
-            PlannedSection("Waypoint & Objective", "Waypoint and objective destinations will be resolved outside the DX12 hot path.", "TeleportService / NativeRuntime");
-            PlannedSection("Saved Locations", "Named locations will be stored by the configuration layer and dispatched on demand.", "TeleportService / Config");
+            auto& service = Features::World::TeleportService::Get();
+            const auto snapshot = service.Snapshot();
+            const bool nativeReady = Game::GameRuntime::Get().NativeReady();
+            static float coords[3]{0.0f, 0.0f, 0.0f};
+            static bool resolveGround = true;
 
-            ImGui::SeparatorText("Compatibility Lock");
-            ImGui::TextWrapped(
-                "Teleport execution is intentionally locked while the post-update GTA native runtime is unverified. The UI and backend command path can be prepared without calling game natives.");
-            ImGui::BeginDisabled();
-            ImGui::Button("Teleport to Waypoint (prepared)");
-            ImGui::SameLine();
-            ImGui::Button("Teleport to Objective (prepared)");
+            ImGui::SeparatorText("Waypoint");
+            ImGui::BeginDisabled(!service.IsReady() || !nativeReady || snapshot.pending);
+            if (ImGui::Button("Teleport to Waypoint"))
+                static_cast<void>(service.QueueWaypoint());
+
+            ImGui::SeparatorText("Coordinates");
+            ImGui::InputFloat3("XYZ", coords);
+            ImGui::Checkbox("Resolve safe ground / water", &resolveGround);
+            if (ImGui::Button("Teleport to Coordinates"))
+                static_cast<void>(service.QueueCoordinates(coords[0], coords[1], coords[2], resolveGround));
             ImGui::EndDisabled();
+
+            ImGui::TextDisabled("%s", snapshot.message.c_str());
+            if (snapshot.pending)
+                ImGui::TextDisabled("Teleport is waiting for safe destination collision...");
         }
 
         void RenderWorld() noexcept
@@ -430,6 +507,7 @@ namespace TutonesV2::UI
         switch (page)
         {
         case MenuPage::Self: RenderSelf(); break;
+        case MenuPage::Weapons: RenderWeapons(); break;
         case MenuPage::Vehicle: RenderVehicle(); break;
         case MenuPage::Teleport: RenderTeleport(); break;
         case MenuPage::World: RenderWorld(); break;

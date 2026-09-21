@@ -6,6 +6,9 @@
 #include "../features/player/PlayerService.hpp"
 #include "../features/player/PlayerStatsService.hpp"
 #include "../features/player/SelfOnlineService.hpp"
+#include "../features/vehicle/VehicleService.hpp"
+#include "../features/weapon/WeaponService.hpp"
+#include "../features/world/TeleportService.hpp"
 #include "../hooking/HookManager.hpp"
 #include "../render/Renderer.hpp"
 
@@ -36,6 +39,9 @@ namespace TutonesV2::App
             || !Features::Player::PlayerService::Get().Initialize()
             || !Features::Player::SelfOnlineService::Get().Initialize()
             || !Features::Player::PlayerStatsService::Get().Initialize()
+            || !Features::Weapon::WeaponService::Get().Initialize()
+            || !Features::Vehicle::VehicleService::Get().Initialize()
+            || !Features::World::TeleportService::Get().Initialize()
             || !Render::Renderer::Get().Initialize()
             || !Hooking::HookManager::Get().Initialize())
         {
@@ -54,6 +60,9 @@ namespace TutonesV2::App
             return;
 
         Core::Logger::Get().Info("core", "Tutones Menu V2 shutting down");
+        Features::World::TeleportService::Get().Shutdown();
+        Features::Vehicle::VehicleService::Get().Shutdown();
+        Features::Weapon::WeaponService::Get().Shutdown();
         Features::Player::PlayerStatsService::Get().Shutdown();
         Features::Player::SelfOnlineService::Get().Shutdown();
         Features::Player::PlayerService::Get().Shutdown();

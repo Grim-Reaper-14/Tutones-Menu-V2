@@ -8,6 +8,7 @@ namespace TutonesV2::UI
     enum class MenuPage : std::uint8_t
     {
         Self,
+        Weapons,
         Vehicle,
         Teleport,
         World,
@@ -21,8 +22,9 @@ namespace TutonesV2::UI
         const char* Label;
     };
 
-    inline constexpr std::array<MenuPageDescriptor, 6> MenuPages{{
+    inline constexpr std::array<MenuPageDescriptor, 7> MenuPages{{
         {MenuPage::Self, "Self"},
+        {MenuPage::Weapons, "Weapons"},
         {MenuPage::Vehicle, "Vehicle"},
         {MenuPage::Teleport, "Teleport"},
         {MenuPage::World, "World"},
@@ -35,6 +37,7 @@ namespace TutonesV2::UI
         switch (page)
         {
         case MenuPage::Self: return "Self";
+        case MenuPage::Weapons: return "Weapons";
         case MenuPage::Vehicle: return "Vehicle";
         case MenuPage::Teleport: return "Teleport";
         case MenuPage::World: return "World";
