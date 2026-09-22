@@ -13,11 +13,14 @@
 #include "../features/world/TeleportService.hpp"
 #include "../features/world/WorldService.hpp"
 #include "../game/GameRuntime.hpp"
+#include "../game/vehicle/VehicleCatalogs.hpp"
+#include "../game/vehicle/VehicleModels.hpp"
 
 #include <imgui.h>
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -599,12 +602,21 @@ namespace TutonesV2::UI
         void RenderVehicle() noexcept
         {
             auto& service = Features::Vehicle::VehicleService::Get();
+            service.EnsureCatalog();
+
             const auto snapshot = service.Snapshot();
+            const auto catalog = service.CatalogSnapshot();
             const bool nativeReady = Game::GameRuntime::Get().NativeReady();
+
             static bool settingsLoaded{};
             static char modelName[64]{"adder"};
+            static char search[64]{};
             static bool enterVehicle = true;
             static bool networked = true;
+            static bool spawnMaxed{};
+            static bool cloneInside = true;
+            static int classFilter{-1};
+            static int selectedModel{-1};
 
             if (!settingsLoaded)
             {
@@ -612,76 +624,334 @@ namespace TutonesV2::UI
                 CopySettingText(modelName, saved.vehicleModel);
                 enterVehicle = saved.vehicleEnterAfterSpawn;
                 networked = saved.vehicleNetworked;
+                spawnMaxed = saved.vehicleSpawnMaxed;
+                cloneInside = saved.vehicleCloneInside;
+                classFilter = saved.vehicleClassFilter;
+
+                for (std::size_t i = 0; i < Game::VehicleCatalogs::VehicleModels.size(); ++i)
+                {
+                    if (std::string_view(Game::VehicleCatalogs::VehicleModels[i]) == std::string_view(modelName))
+                    {
+                        selectedModel = static_cast<int>(i);
+                        break;
+                    }
+                }
+
                 settingsLoaded = true;
             }
 
-            ImGui::SeparatorText("Vehicle Spawner");
-            ImGui::BeginDisabled(!service.IsReady() || !nativeReady || snapshot.busy);
-            ImGui::SetNextItemWidth(260.0f);
-            if (ImGui::InputText("Vehicle Model", modelName, sizeof(modelName)))
-            {
-                const std::string value(modelName);
-                Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
-                    settings.vehicleModel = value;
-                });
-            }
-            if (ImGui::Checkbox("Enter spawned vehicle", &enterVehicle))
-            {
-                const bool value = enterVehicle;
-                Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
-                    settings.vehicleEnterAfterSpawn = value;
-                });
-            }
-            ImGui::SameLine();
-            if (ImGui::Checkbox("Networked / persistent", &networked))
-            {
-                const bool value = networked;
-                Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
-                    settings.vehicleNetworked = value;
-                });
-            }
-            if (ImGui::Button("Spawn Vehicle"))
-                static_cast<void>(service.QueueSpawn(modelName, enterVehicle, networked));
-            ImGui::EndDisabled();
+            auto searchMatches = [](std::string_view model, std::string_view display, std::string_view needle) {
+                if (needle.empty())
+                    return true;
 
-            ImGui::TextDisabled("%s", snapshot.message.c_str());
+                std::string haystack;
+                haystack.reserve(model.size() + display.size() + 1);
+                haystack.append(display);
+                haystack.push_back(' ');
+                haystack.append(model);
+
+                std::string lowerNeedle(needle);
+                std::transform(
+                    haystack.begin(),
+                    haystack.end(),
+                    haystack.begin(),
+                    [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+                std::transform(
+                    lowerNeedle.begin(),
+                    lowerNeedle.end(),
+                    lowerNeedle.begin(),
+                    [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+
+                return haystack.find(lowerNeedle) != std::string::npos;
+            };
+
+            ImGui::TextDisabled(
+                "V1 catalog: %zu / %zu vehicle names resolved",
+                catalog.ready,
+                catalog.total);
+
+            if (ImGui::BeginTabBar("##vehicle_hub_tabs"))
+            {
+                if (ImGui::BeginTabItem("Spawner"))
+                {
+                    ImGui::SeparatorText("Vehicle Catalog");
+
+                    const char* classPreview =
+                        classFilter < 0
+                            ? "All Vehicles"
+                            : Game::VehicleCatalogs::VehicleClassNames[static_cast<std::size_t>(classFilter)];
+
+                    ImGui::SetNextItemWidth(220.0f);
+                    if (ImGui::BeginCombo("Class", classPreview))
+                    {
+                        if (ImGui::Selectable("All Vehicles", classFilter < 0))
+                        {
+                            classFilter = -1;
+                            Config::SettingsService::Get().Update([](Config::MenuSettings& settings) {
+                                settings.vehicleClassFilter = -1;
+                            });
+                        }
+
+                        for (std::size_t i = 0; i < Game::VehicleCatalogs::VehicleClassNames.size(); ++i)
+                        {
+                            const bool selected = classFilter == static_cast<int>(i);
+                            if (ImGui::Selectable(Game::VehicleCatalogs::VehicleClassNames[i], selected))
+                            {
+                                classFilter = static_cast<int>(i);
+                                const int savedClass = classFilter;
+                                Config::SettingsService::Get().Update([savedClass](Config::MenuSettings& settings) {
+                                    settings.vehicleClassFilter = savedClass;
+                                });
+                            }
+                            if (selected)
+                                ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndCombo();
+                    }
+
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(-1.0f);
+                    ImGui::InputTextWithHint(
+                        "##vehicle_search",
+                        "Search vehicle name / model",
+                        search,
+                        sizeof(search));
+
+                    if (ImGui::BeginTable(
+                            "##vehicle_catalog_browser",
+                            2,
+                            ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV))
+                    {
+                        ImGui::TableSetupColumn("Vehicle List", ImGuiTableColumnFlags_WidthStretch, 1.7f);
+                        ImGui::TableSetupColumn("Selection", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                        ImGui::TableNextRow();
+                        ImGui::TableSetColumnIndex(0);
+
+                        if (ImGui::BeginListBox("##vehicle_catalog", ImVec2(-1.0f, 210.0f)))
+                        {
+                            bool anyVisible{};
+                            const std::string_view needle(search);
+
+                            for (std::size_t i = 0; i < Game::VehicleCatalogs::VehicleModels.size(); ++i)
+                            {
+                                const char* model = Game::VehicleCatalogs::VehicleModels[i];
+                                const int vehicleClass =
+                                    i < catalog.classes.size() ? catalog.classes[i] : -2;
+
+                                if (classFilter >= 0 && vehicleClass != classFilter)
+                                    continue;
+
+                                const std::string_view display =
+                                    i < catalog.displayNames.size() && !catalog.displayNames[i].empty()
+                                        ? std::string_view(catalog.displayNames[i])
+                                        : std::string_view(model);
+
+                                if (!searchMatches(model, display, needle))
+                                    continue;
+
+                                anyVisible = true;
+                                const bool selected = selectedModel == static_cast<int>(i);
+
+                                std::string label(display);
+                                if (display != std::string_view(model))
+                                {
+                                    label.append("  [");
+                                    label.append(model);
+                                    label.push_back(']');
+                                }
+
+                                if (ImGui::Selectable(label.c_str(), selected))
+                                {
+                                    selectedModel = static_cast<int>(i);
+                                    CopySettingText(modelName, model);
+
+                                    const std::string value(model);
+                                    Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                                        settings.vehicleModel = value;
+                                    });
+                                }
+
+                                if (selected)
+                                    ImGui::SetItemDefaultFocus();
+                            }
+
+                            if (!anyVisible)
+                                ImGui::TextDisabled(
+                                    classFilter >= 0 && catalog.loading
+                                        ? "Resolving vehicles for this class..."
+                                        : "No matching vehicles.");
+
+                            ImGui::EndListBox();
+                        }
+
+                        ImGui::TableSetColumnIndex(1);
+                        if (selectedModel >= 0
+                            && selectedModel < static_cast<int>(Game::VehicleCatalogs::VehicleModels.size()))
+                        {
+                            const std::size_t index = static_cast<std::size_t>(selectedModel);
+                            const char* model = Game::VehicleCatalogs::VehicleModels[index];
+                            const char* display =
+                                index < catalog.displayNames.size() && !catalog.displayNames[index].empty()
+                                    ? catalog.displayNames[index].c_str()
+                                    : model;
+                            const int selectedClass =
+                                index < catalog.classes.size() ? catalog.classes[index] : -1;
+
+                            ImGui::TextWrapped("%s", display);
+                            ImGui::TextDisabled("Model: %s", model);
+                            if (selectedClass >= 0
+                                && selectedClass < static_cast<int>(Game::VehicleCatalogs::VehicleClassNames.size()))
+                            {
+                                ImGui::TextDisabled(
+                                    "Class: %s",
+                                    Game::VehicleCatalogs::VehicleClassNames[static_cast<std::size_t>(selectedClass)]);
+                            }
+                            else
+                            {
+                                ImGui::TextDisabled("Class: resolving...");
+                            }
+                        }
+                        else
+                        {
+                            ImGui::TextDisabled("Select a vehicle from the catalog.");
+                        }
+
+                        ImGui::EndTable();
+                    }
+
+                    ImGui::SeparatorText("Spawn Vehicle");
+                    ImGui::SetNextItemWidth(-1.0f);
+                    if (ImGui::InputTextWithHint(
+                            "##spawn_model",
+                            "Model name / add-on model",
+                            modelName,
+                            sizeof(modelName)))
+                    {
+                        selectedModel = -1;
+                        const std::string value(modelName);
+                        Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                            settings.vehicleModel = value;
+                        });
+                    }
+
+                    if (ImGui::Checkbox("Spawn inside", &enterVehicle))
+                    {
+                        const bool value = enterVehicle;
+                        Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                            settings.vehicleEnterAfterSpawn = value;
+                        });
+                    }
+
+                    ImGui::SameLine();
+                    if (ImGui::Checkbox("Spawn maxed", &spawnMaxed))
+                    {
+                        const bool value = spawnMaxed;
+                        Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                            settings.vehicleSpawnMaxed = value;
+                        });
+                    }
+
+                    ImGui::SameLine();
+                    if (ImGui::Checkbox("Networked / persistent", &networked))
+                    {
+                        const bool value = networked;
+                        Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                            settings.vehicleNetworked = value;
+                        });
+                    }
+
+                    ImGui::BeginDisabled(!service.IsReady() || !nativeReady || snapshot.busy);
+                    if (ImGui::Button(
+                            snapshot.busy ? "Loading Vehicle..." : "Spawn Vehicle",
+                            ImVec2(-1.0f, 30.0f)))
+                    {
+                        static_cast<void>(
+                            service.QueueSpawn(
+                                modelName,
+                                enterVehicle,
+                                networked,
+                                spawnMaxed));
+                    }
+                    ImGui::EndDisabled();
+
+                    ImGui::EndTabItem();
+                }
+
+                if (ImGui::BeginTabItem("Current"))
+                {
+                    ImGui::BeginDisabled(!service.IsReady() || !nativeReady);
+
+                    bool vehicleGodMode = service.VehicleGodMode();
+                    bool keepVehicleClean = service.KeepVehicleClean();
+                    bool hornBoost = service.HornBoost();
+
+                    if (ImGui::Checkbox("Vehicle God Mode", &vehicleGodMode))
+                    {
+                        static_cast<void>(service.SetVehicleGodMode(vehicleGodMode));
+                        Config::SettingsService::Get().Update([vehicleGodMode](Config::MenuSettings& settings) {
+                            settings.vehicleGodMode = vehicleGodMode;
+                        });
+                    }
+
+                    if (ImGui::Checkbox("Keep Vehicle Clean", &keepVehicleClean))
+                    {
+                        static_cast<void>(service.SetKeepVehicleClean(keepVehicleClean));
+                        Config::SettingsService::Get().Update([keepVehicleClean](Config::MenuSettings& settings) {
+                            settings.vehicleKeepClean = keepVehicleClean;
+                        });
+                    }
+
+                    if (ImGui::Checkbox("Horn Boost", &hornBoost))
+                    {
+                        static_cast<void>(service.SetHornBoost(hornBoost));
+                        Config::SettingsService::Get().Update([hornBoost](Config::MenuSettings& settings) {
+                            settings.vehicleHornBoost = hornBoost;
+                        });
+                    }
+
+                    if (ImGui::Button("Repair Current"))
+                        static_cast<void>(service.QueueRepairCurrent());
+                    ImGui::SameLine();
+                    if (ImGui::Button("Clean Current"))
+                        static_cast<void>(service.QueueCleanCurrent());
+                    ImGui::SameLine();
+                    if (ImGui::Button("Set Upright"))
+                        static_cast<void>(service.QueueSetUpright());
+
+                    ImGui::EndDisabled();
+                    ImGui::TextDisabled("Horn Boost uses the normal horn control while driving.");
+                    ImGui::EndTabItem();
+                }
+
+                if (ImGui::BeginTabItem("Clone"))
+                {
+                    if (ImGui::Checkbox("Enter cloned vehicle", &cloneInside))
+                    {
+                        const bool value = cloneInside;
+                        Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                            settings.vehicleCloneInside = value;
+                        });
+                    }
+
+                    ImGui::TextWrapped(
+                        "Clone Current Vehicle copies the supported V1-style customization state: "
+                        "paint/custom RGB, mod slots, wheel type, xenon/neon, tire smoke, burst state and drift tires.");
+
+                    ImGui::BeginDisabled(!service.IsReady() || !nativeReady || snapshot.busy);
+                    if (ImGui::Button("Clone Current Vehicle", ImVec2(-1.0f, 30.0f)))
+                        static_cast<void>(service.QueueCloneCurrent(cloneInside, networked));
+                    ImGui::EndDisabled();
+
+                    ImGui::EndTabItem();
+                }
+
+                ImGui::EndTabBar();
+            }
+
+            ImGui::Spacing();
+            ImGui::TextWrapped("Vehicle status: %s", snapshot.message.c_str());
             if (snapshot.lastSpawnedVehicle)
-                ImGui::Text("Last spawned handle: %d", snapshot.lastSpawnedVehicle);
-
-            ImGui::SeparatorText("Current Vehicle");
-            ImGui::BeginDisabled(!service.IsReady() || !nativeReady);
-
-            bool vehicleGodMode = service.VehicleGodMode();
-            bool keepVehicleClean = service.KeepVehicleClean();
-            bool hornBoost = service.HornBoost();
-
-            if (ImGui::Checkbox("Vehicle God Mode", &vehicleGodMode))
-            {
-                static_cast<void>(service.SetVehicleGodMode(vehicleGodMode));
-                Config::SettingsService::Get().Update([vehicleGodMode](Config::MenuSettings& settings) { settings.vehicleGodMode = vehicleGodMode; });
-            }
-            if (ImGui::Checkbox("Keep Vehicle Clean", &keepVehicleClean))
-            {
-                static_cast<void>(service.SetKeepVehicleClean(keepVehicleClean));
-                Config::SettingsService::Get().Update([keepVehicleClean](Config::MenuSettings& settings) { settings.vehicleKeepClean = keepVehicleClean; });
-            }
-            if (ImGui::Checkbox("Horn Boost", &hornBoost))
-            {
-                static_cast<void>(service.SetHornBoost(hornBoost));
-                Config::SettingsService::Get().Update([hornBoost](Config::MenuSettings& settings) { settings.vehicleHornBoost = hornBoost; });
-            }
-
-            if (ImGui::Button("Repair Current"))
-                static_cast<void>(service.QueueRepairCurrent());
-            ImGui::SameLine();
-            if (ImGui::Button("Clean Current"))
-                static_cast<void>(service.QueueCleanCurrent());
-            ImGui::SameLine();
-            if (ImGui::Button("Set Upright"))
-                static_cast<void>(service.QueueSetUpright());
-
-            ImGui::EndDisabled();
-            ImGui::TextDisabled("Horn Boost uses the normal horn control while driving.");
+                ImGui::TextDisabled("Last spawned handle: %d", snapshot.lastSpawnedVehicle);
         }
 
         void RenderTeleport() noexcept
