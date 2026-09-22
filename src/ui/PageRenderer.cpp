@@ -602,10 +602,12 @@ namespace TutonesV2::UI
         void RenderVehicle() noexcept
         {
             auto& service = Features::Vehicle::VehicleService::Get();
+            auto& thumbnails = VehicleThumbnailCache::Get();
             service.EnsureCatalog();
 
             const auto snapshot = service.Snapshot();
             const auto catalog = service.CatalogSnapshot();
+            const auto artwork = thumbnails.SyncSnapshot();
             const bool nativeReady = Game::GameRuntime::Get().NativeReady();
 
             static bool settingsLoaded{};
@@ -665,51 +667,153 @@ namespace TutonesV2::UI
                 return haystack.find(lowerNeedle) != std::string::npos;
             };
 
+            auto selectModel = [&](std::size_t index) {
+                if (index >= Game::VehicleCatalogs::VehicleModels.size())
+                    return;
+
+                selectedModel = static_cast<int>(index);
+                const char* model = Game::VehicleCatalogs::VehicleModels[index];
+                CopySettingText(modelName, model);
+
+                const std::string value(model);
+                Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                    settings.vehicleModel = value;
+                });
+            };
+
+            auto selectClass = [&](int nextClass) {
+                classFilter = nextClass;
+                const int savedClass = nextClass;
+                Config::SettingsService::Get().Update([savedClass](Config::MenuSettings& settings) {
+                    settings.vehicleClassFilter = savedClass;
+                });
+
+                if (nextClass >= 0)
+                {
+                    for (std::size_t i = 0; i < catalog.classes.size(); ++i)
+                    {
+                        if (catalog.classes[i] == nextClass)
+                        {
+                            selectModel(i);
+                            break;
+                        }
+                    }
+                }
+            };
+
             ImGui::TextDisabled(
-                "V1 catalog: %zu / %zu vehicle names resolved",
+                "V1 catalog: %zu / %zu vehicles resolved",
                 catalog.ready,
                 catalog.total);
+
+            if (artwork.running || artwork.completed)
+            {
+                ImGui::TextDisabled(
+                    "Artwork: %zu cached/downloaded | %zu missing | %zu failed%s",
+                    artwork.existing + artwork.downloaded,
+                    artwork.missing,
+                    artwork.failed,
+                    artwork.running ? " | syncing..." : "");
+            }
 
             if (ImGui::BeginTabBar("##vehicle_hub_tabs"))
             {
                 if (ImGui::BeginTabItem("Spawner"))
                 {
-                    ImGui::SeparatorText("Vehicle Catalog");
+                    ImGui::SeparatorText("Vehicle Categories");
 
-                    const char* classPreview =
+                    if (ImGui::Button("All Vehicles", ImVec2(118.0f, 28.0f)))
+                        selectClass(-1);
+                    ImGui::SameLine();
+                    if (ImGui::Button("Refresh Photos", ImVec2(118.0f, 28.0f)))
+                        thumbnails.Refresh();
+                    ImGui::SameLine();
+                    ImGui::TextDisabled(
                         classFilter < 0
-                            ? "All Vehicles"
-                            : Game::VehicleCatalogs::VehicleClassNames[static_cast<std::size_t>(classFilter)];
+                            ? "ALL"
+                            : Game::VehicleCatalogs::VehicleClassNames[static_cast<std::size_t>(classFilter)]);
 
-                    ImGui::SetNextItemWidth(220.0f);
-                    if (ImGui::BeginCombo("Class", classPreview))
+                    if (ImGui::BeginChild("##vehicle_category_cards", ImVec2(-1.0f, 176.0f), true))
                     {
-                        if (ImGui::Selectable("All Vehicles", classFilter < 0))
-                        {
-                            classFilter = -1;
-                            Config::SettingsService::Get().Update([](Config::MenuSettings& settings) {
-                                settings.vehicleClassFilter = -1;
-                            });
-                        }
+                        constexpr int Columns = 4;
+                        constexpr float CardHeight = 78.0f;
+                        const float spacing = ImGui::GetStyle().ItemSpacing.x;
+                        const float available = ImGui::GetContentRegionAvail().x;
+                        const float cardWidth = std::max(92.0f, (available - spacing * (Columns - 1)) / Columns);
 
                         for (std::size_t i = 0; i < Game::VehicleCatalogs::VehicleClassNames.size(); ++i)
                         {
+                            ImGui::PushID(static_cast<int>(i));
+                            const ImVec2 startPos = ImGui::GetCursorScreenPos();
                             const bool selected = classFilter == static_cast<int>(i);
-                            if (ImGui::Selectable(Game::VehicleCatalogs::VehicleClassNames[i], selected))
-                            {
-                                classFilter = static_cast<int>(i);
-                                const int savedClass = classFilter;
-                                Config::SettingsService::Get().Update([savedClass](Config::MenuSettings& settings) {
-                                    settings.vehicleClassFilter = savedClass;
-                                });
-                            }
-                            if (selected)
-                                ImGui::SetItemDefaultFocus();
-                        }
-                        ImGui::EndCombo();
-                    }
+                            ImGui::InvisibleButton("##class_card", ImVec2(cardWidth, CardHeight));
+                            const bool pressed = ImGui::IsItemClicked();
 
-                    ImGui::SameLine();
+                            auto* draw = ImGui::GetWindowDrawList();
+                            const ImU32 background = ImGui::GetColorU32(
+                                selected ? ImGuiCol_ButtonActive
+                                         : (ImGui::IsItemHovered() ? ImGuiCol_ButtonHovered : ImGuiCol_Button));
+                            const ImU32 border = ImGui::GetColorU32(
+                                selected ? ImGuiCol_CheckMark : ImGuiCol_Border);
+
+                            draw->AddRectFilled(
+                                startPos,
+                                ImVec2(startPos.x + cardWidth, startPos.y + CardHeight),
+                                background,
+                                5.0f);
+                            draw->AddRect(
+                                startPos,
+                                ImVec2(startPos.x + cardWidth, startPos.y + CardHeight),
+                                border,
+                                5.0f,
+                                0,
+                                selected ? 2.0f : 1.0f);
+
+                            const auto thumb = thumbnails.ClassThumbnail(static_cast<int>(i));
+                            constexpr float imageHeight = 52.0f;
+                            if (thumb.Valid())
+                            {
+                                draw->AddImage(
+                                    static_cast<ImTextureID>(thumb.textureId),
+                                    ImVec2(startPos.x + 3.0f, startPos.y + 3.0f),
+                                    ImVec2(startPos.x + cardWidth - 3.0f, startPos.y + imageHeight));
+                            }
+                            else
+                            {
+                                draw->AddText(
+                                    ImVec2(startPos.x + 8.0f, startPos.y + 20.0f),
+                                    ImGui::GetColorU32(ImGuiCol_TextDisabled),
+                                    "Loading photo...");
+                            }
+
+                            const char* label = Game::VehicleCatalogs::VehicleClassNames[i];
+                            const ImVec2 labelSize = ImGui::CalcTextSize(label);
+                            draw->AddText(
+                                ImVec2(
+                                    startPos.x + std::max(4.0f, (cardWidth - labelSize.x) * 0.5f),
+                                    startPos.y + 57.0f),
+                                ImGui::GetColorU32(ImGuiCol_Text),
+                                label);
+
+                            if (pressed)
+                                selectClass(static_cast<int>(i));
+
+                            ImGui::PopID();
+
+                            if ((i % Columns) != Columns - 1
+                                && i + 1 < Game::VehicleCatalogs::VehicleClassNames.size())
+                            {
+                                ImGui::SameLine();
+                            }
+                        }
+                    }
+                    ImGui::EndChild();
+
+                    ImGui::SeparatorText(
+                        classFilter < 0
+                            ? "All Vehicles"
+                            : Game::VehicleCatalogs::VehicleClassNames[static_cast<std::size_t>(classFilter)]);
+
                     ImGui::SetNextItemWidth(-1.0f);
                     ImGui::InputTextWithHint(
                         "##vehicle_search",
@@ -717,109 +821,151 @@ namespace TutonesV2::UI
                         search,
                         sizeof(search));
 
-                    if (ImGui::BeginTable(
-                            "##vehicle_catalog_browser",
-                            2,
-                            ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV))
+                    std::vector<std::size_t> visibleModels;
+                    visibleModels.reserve(Game::VehicleCatalogs::VehicleModels.size());
+                    const std::string_view needle(search);
+
+                    for (std::size_t i = 0; i < Game::VehicleCatalogs::VehicleModels.size(); ++i)
                     {
-                        ImGui::TableSetupColumn("Vehicle List", ImGuiTableColumnFlags_WidthStretch, 1.7f);
-                        ImGui::TableSetupColumn("Selection", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-                        ImGui::TableNextRow();
-                        ImGui::TableSetColumnIndex(0);
+                        const int vehicleClass =
+                            i < catalog.classes.size() ? catalog.classes[i] : -2;
 
-                        if (ImGui::BeginListBox("##vehicle_catalog", ImVec2(-1.0f, 210.0f)))
-                        {
-                            bool anyVisible{};
-                            const std::string_view needle(search);
+                        if (classFilter >= 0 && vehicleClass != classFilter)
+                            continue;
 
-                            for (std::size_t i = 0; i < Game::VehicleCatalogs::VehicleModels.size(); ++i)
-                            {
-                                const char* model = Game::VehicleCatalogs::VehicleModels[i];
-                                const int vehicleClass =
-                                    i < catalog.classes.size() ? catalog.classes[i] : -2;
+                        const char* model = Game::VehicleCatalogs::VehicleModels[i];
+                        const std::string_view display =
+                            i < catalog.displayNames.size() && !catalog.displayNames[i].empty()
+                                ? std::string_view(catalog.displayNames[i])
+                                : std::string_view(model);
 
-                                if (classFilter >= 0 && vehicleClass != classFilter)
-                                    continue;
-
-                                const std::string_view display =
-                                    i < catalog.displayNames.size() && !catalog.displayNames[i].empty()
-                                        ? std::string_view(catalog.displayNames[i])
-                                        : std::string_view(model);
-
-                                if (!searchMatches(model, display, needle))
-                                    continue;
-
-                                anyVisible = true;
-                                const bool selected = selectedModel == static_cast<int>(i);
-
-                                std::string label(display);
-                                if (display != std::string_view(model))
-                                {
-                                    label.append("  [");
-                                    label.append(model);
-                                    label.push_back(']');
-                                }
-
-                                if (ImGui::Selectable(label.c_str(), selected))
-                                {
-                                    selectedModel = static_cast<int>(i);
-                                    CopySettingText(modelName, model);
-
-                                    const std::string value(model);
-                                    Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
-                                        settings.vehicleModel = value;
-                                    });
-                                }
-
-                                if (selected)
-                                    ImGui::SetItemDefaultFocus();
-                            }
-
-                            if (!anyVisible)
-                                ImGui::TextDisabled(
-                                    classFilter >= 0 && catalog.loading
-                                        ? "Resolving vehicles for this class..."
-                                        : "No matching vehicles.");
-
-                            ImGui::EndListBox();
-                        }
-
-                        ImGui::TableSetColumnIndex(1);
-                        if (selectedModel >= 0
-                            && selectedModel < static_cast<int>(Game::VehicleCatalogs::VehicleModels.size()))
-                        {
-                            const std::size_t index = static_cast<std::size_t>(selectedModel);
-                            const char* model = Game::VehicleCatalogs::VehicleModels[index];
-                            const char* display =
-                                index < catalog.displayNames.size() && !catalog.displayNames[index].empty()
-                                    ? catalog.displayNames[index].c_str()
-                                    : model;
-                            const int selectedClass =
-                                index < catalog.classes.size() ? catalog.classes[index] : -1;
-
-                            ImGui::TextWrapped("%s", display);
-                            ImGui::TextDisabled("Model: %s", model);
-                            if (selectedClass >= 0
-                                && selectedClass < static_cast<int>(Game::VehicleCatalogs::VehicleClassNames.size()))
-                            {
-                                ImGui::TextDisabled(
-                                    "Class: %s",
-                                    Game::VehicleCatalogs::VehicleClassNames[static_cast<std::size_t>(selectedClass)]);
-                            }
-                            else
-                            {
-                                ImGui::TextDisabled("Class: resolving...");
-                            }
-                        }
-                        else
-                        {
-                            ImGui::TextDisabled("Select a vehicle from the catalog.");
-                        }
-
-                        ImGui::EndTable();
+                        if (searchMatches(model, display, needle))
+                            visibleModels.push_back(i);
                     }
 
-                    ImGui::SeparatorText("Spawn Vehicle");
+                    if (ImGui::BeginChild("##vehicle_photo_grid", ImVec2(-1.0f, 264.0f), true))
+                    {
+                        constexpr int Columns = 3;
+                        constexpr float CardHeight = 118.0f;
+                        constexpr float ImageHeight = 82.0f;
+                        const float spacing = ImGui::GetStyle().ItemSpacing.x;
+                        const float available = ImGui::GetContentRegionAvail().x;
+                        const float cardWidth = std::max(126.0f, (available - spacing * (Columns - 1)) / Columns);
+                        const int rowCount = static_cast<int>((visibleModels.size() + Columns - 1) / Columns);
+
+                        ImGuiListClipper clipper;
+                        clipper.Begin(rowCount, CardHeight + ImGui::GetStyle().ItemSpacing.y);
+
+                        while (clipper.Step())
+                        {
+                            for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
+                            {
+                                for (int column = 0; column < Columns; ++column)
+                                {
+                                    const std::size_t visibleIndex =
+                                        static_cast<std::size_t>(row * Columns + column);
+                                    if (visibleIndex >= visibleModels.size())
+                                        break;
+
+                                    const std::size_t index = visibleModels[visibleIndex];
+                                    const char* model = Game::VehicleCatalogs::VehicleModels[index];
+                                    const char* display =
+                                        index < catalog.displayNames.size() && !catalog.displayNames[index].empty()
+                                            ? catalog.displayNames[index].c_str()
+                                            : model;
+                                    const int vehicleClass =
+                                        index < catalog.classes.size() ? catalog.classes[index] : -1;
+
+                                    ImGui::PushID(static_cast<int>(index));
+                                    const ImVec2 startPos = ImGui::GetCursorScreenPos();
+                                    const bool selected = selectedModel == static_cast<int>(index);
+                                    ImGui::InvisibleButton(
+                                        "##vehicle_photo_card",
+                                        ImVec2(cardWidth, CardHeight));
+                                    const bool pressed = ImGui::IsItemClicked();
+                                    const bool hovered = ImGui::IsItemHovered();
+
+                                    auto* draw = ImGui::GetWindowDrawList();
+                                    const ImU32 background = ImGui::GetColorU32(
+                                        selected ? ImGuiCol_ButtonActive
+                                                 : (hovered ? ImGuiCol_ButtonHovered : ImGuiCol_Button));
+                                    const ImU32 border = ImGui::GetColorU32(
+                                        selected ? ImGuiCol_CheckMark : ImGuiCol_Border);
+
+                                    draw->AddRectFilled(
+                                        startPos,
+                                        ImVec2(startPos.x + cardWidth, startPos.y + CardHeight),
+                                        background,
+                                        5.0f);
+                                    draw->AddRect(
+                                        startPos,
+                                        ImVec2(startPos.x + cardWidth, startPos.y + CardHeight),
+                                        border,
+                                        5.0f,
+                                        0,
+                                        selected ? 2.0f : 1.0f);
+
+                                    const auto thumb = thumbnails.VehicleThumbnail(model, vehicleClass);
+                                    if (thumb.Valid())
+                                    {
+                                        draw->AddImage(
+                                            static_cast<ImTextureID>(thumb.textureId),
+                                            ImVec2(startPos.x + 3.0f, startPos.y + 3.0f),
+                                            ImVec2(startPos.x + cardWidth - 3.0f, startPos.y + ImageHeight));
+                                    }
+                                    else
+                                    {
+                                        const char* loading = "Loading vehicle photo...";
+                                        const ImVec2 loadingSize = ImGui::CalcTextSize(loading);
+                                        draw->AddText(
+                                            ImVec2(
+                                                startPos.x + std::max(4.0f, (cardWidth - loadingSize.x) * 0.5f),
+                                                startPos.y + 34.0f),
+                                            ImGui::GetColorU32(ImGuiCol_TextDisabled),
+                                            loading);
+                                    }
+
+                                    std::string label(display);
+                                    if (label.size() > 22)
+                                        label = label.substr(0, 20) + "..";
+                                    const ImVec2 textSize = ImGui::CalcTextSize(label.c_str());
+                                    draw->AddText(
+                                        ImVec2(
+                                            startPos.x + std::max(4.0f, (cardWidth - textSize.x) * 0.5f),
+                                            startPos.y + 88.0f),
+                                        ImGui::GetColorU32(ImGuiCol_Text),
+                                        label.c_str());
+
+                                    const ImVec2 modelSize = ImGui::CalcTextSize(model);
+                                    draw->AddText(
+                                        ImVec2(
+                                            startPos.x + std::max(4.0f, (cardWidth - modelSize.x) * 0.5f),
+                                            startPos.y + 103.0f),
+                                        ImGui::GetColorU32(ImGuiCol_TextDisabled),
+                                        model);
+
+                                    if (pressed)
+                                        selectModel(index);
+
+                                    ImGui::PopID();
+
+                                    if (column != Columns - 1 && visibleIndex + 1 < visibleModels.size())
+                                        ImGui::SameLine();
+                                }
+                            }
+                        }
+                    }
+                    ImGui::EndChild();
+
+                    if (visibleModels.empty())
+                    {
+                        ImGui::TextDisabled(
+                            classFilter >= 0 && catalog.loading
+                                ? "Resolving vehicles for this category..."
+                                : "No matching vehicles.");
+                    }
+
+                    ImGui::SeparatorText("Spawn Selected / Add-On Vehicle");
                     ImGui::SetNextItemWidth(-1.0f);
                     if (ImGui::InputTextWithHint(
                             "##spawn_model",
@@ -873,6 +1019,9 @@ namespace TutonesV2::UI
                                 spawnMaxed));
                     }
                     ImGui::EndDisabled();
+
+                    if (!artwork.message.empty())
+                        ImGui::TextDisabled("Photo sync: %s", artwork.message.c_str());
 
                     ImGui::EndTabItem();
                 }
