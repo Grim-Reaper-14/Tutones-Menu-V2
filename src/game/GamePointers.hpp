@@ -4,6 +4,9 @@
 
 namespace TutonesV2::Game
 {
+    using InitNativeTablesFn = Native::InitNativeTablesFn;
+    using RunScriptThreadsFn = Native::RunScriptThreadsFn;
+
     class GamePointers final
     {
     public:
@@ -18,12 +21,12 @@ namespace TutonesV2::Game
             return Native::NativePointers::Get().IsResolved();
         }
 
-        [[nodiscard]] Native::InitNativeTablesFn InitNativeTables() const noexcept
+        [[nodiscard]] InitNativeTablesFn InitNativeTables() const noexcept
         {
             return Native::NativePointers::Get().InitNativeTables();
         }
 
-        [[nodiscard]] Native::RunScriptThreadsFn RunScriptThreads() const noexcept
+        [[nodiscard]] RunScriptThreadsFn RunScriptThreads() const noexcept
         {
             return Native::NativePointers::Get().RunScriptThreads();
         }
