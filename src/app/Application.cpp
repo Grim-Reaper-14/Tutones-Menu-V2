@@ -1,7 +1,8 @@
 #include "Application.hpp"
 
 #include "../backend/BackendHub.hpp"
-#include "../core/Logger.hpp"
+#include "../config/SettingsService.hpp"
+#include "../core/Logger.hpp
 #include "../game/GameRuntime.hpp"
 #include "../features/player/PlayerService.hpp"
 #include "../features/player/PlayerStatsService.hpp"
@@ -11,6 +12,8 @@
 #include "../features/world/TeleportService.hpp"
 #include "../hooking/HookManager.hpp"
 #include "../render/Renderer.hpp"
+#include "../ui/Menu.hpp"
+#include "../ui/MenuTheme.hpp"
 
 namespace TutonesV2::App
 {
@@ -33,6 +36,27 @@ namespace TutonesV2::App
         }
 
         Core::Logger::Get().Info("core", "Tutones Menu V2 bootstrap starting");
+
+        if (!Config::SettingsService::Get().Initialize(moduleDirectory))
+        {
+            Core::Logger::Get().Error("core", "Settings service initialization failed");
+            Shutdown();
+            return false;
+        }
+
+        {
+            const auto settings = Config::SettingsService::Get().Snapshot();
+            auto& theme = UI::MenuTheme::Get();
+            theme.Opacity() = settings.opacity;
+            theme.Scale() = settings.scale;
+            theme.ShowStatusBar() = settings.showStatusBar;
+            auto* accent = theme.AccentColor();
+            accent[0] = settings.accent[0];
+            accent[1] = settings.accent[1];
+            accent[2] = settings.accent[2];
+            accent[3] = 1.0f;
+            UI::Menu::Get().SetPage(static_cast<UI::MenuPage>(settings.selectedPage));
+        }
 
         if (!Backend::BackendHub::Get().Initialize()
             || !Game::GameRuntime::Get().Initialize()
@@ -70,6 +94,7 @@ namespace TutonesV2::App
         Render::Renderer::Get().Shutdown();
         Game::GameRuntime::Get().Shutdown();
         Backend::BackendHub::Get().Shutdown();
+        Config::SettingsService::Get().Shutdown();
         Core::Logger::Get().Info("core", "Tutones Menu V2 stopped");
         Core::Logger::Get().Shutdown();
     }

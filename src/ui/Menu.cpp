@@ -2,6 +2,7 @@
 
 #include "MenuTheme.hpp"
 #include "PageRenderer.hpp"
+#include "../config/SettingsService.hpp"
 
 #include <imgui.h>
 
@@ -26,6 +27,16 @@ namespace TutonesV2::UI
     bool Menu::IsOpen() const noexcept
     {
         return m_Open.load();
+    }
+
+    void Menu::SetPage(MenuPage page) noexcept
+    {
+        m_Page = page;
+    }
+
+    MenuPage Menu::CurrentPage() const noexcept
+    {
+        return m_Page;
     }
 
     void Menu::Render() noexcept
@@ -62,7 +73,12 @@ namespace TutonesV2::UI
         for (const auto& descriptor : MenuPages)
         {
             if (ImGui::Selectable(descriptor.Label, m_Page == descriptor.Page))
+            {
                 m_Page = descriptor.Page;
+                Config::SettingsService::Get().Update([this](Config::MenuSettings& settings) {
+                    settings.selectedPage = static_cast<int>(m_Page);
+                });
+            }
         }
 
         ImGui::Spacing();

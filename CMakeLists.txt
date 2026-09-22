@@ -45,6 +45,7 @@ add_library(Tutones-Menu-V2 SHARED
     src/app/Application.cpp
     src/backend/BackendHub.cpp
     src/core/Logger.cpp
+    src/config/SettingsService.cpp
     src/game/GameProcess.cpp
     src/game/GameRuntime.cpp
     src/game/memory/ModuleView.cpp

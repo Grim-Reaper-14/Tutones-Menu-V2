@@ -14,6 +14,8 @@ namespace TutonesV2::UI
         void Toggle() noexcept;
         void SetOpen(bool open) noexcept;
         [[nodiscard]] bool IsOpen() const noexcept;
+        void SetPage(MenuPage page) noexcept;
+        [[nodiscard]] MenuPage CurrentPage() const noexcept;
         void Render() noexcept;
 
     private:
