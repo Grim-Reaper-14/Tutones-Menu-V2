@@ -5,6 +5,7 @@
 #include "native/NativePointers.hpp"
 #include "native/NativeRegistry.hpp"
 #include "../core/Logger.hpp"
+#include "../config/FeatureRestore.hpp"
 
 #include <Windows.h>
 
@@ -345,6 +346,7 @@ namespace TutonesV2::Game
             Core::Logger::Get().Info(
                 "game",
                 std::string("Native canary passed: PLAYER_PED_ID returned ") + std::to_string(*ped));
+            Config::RestoreSavedFeatureState();
             return;
         }
 
