@@ -144,8 +144,9 @@ namespace TutonesV2::UI
                 if (ImGui::InputInt("Health", &health, 10, 50))
                 {
                     health = std::max(0, health);
-                    Config::SettingsService::Get().Update([health](Config::MenuSettings& settings) {
-                        settings.selfHealth = health;
+                    const int value = health;
+                    Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                        settings.selfHealth = value;
                     });
                 }
                 ImGui::SameLine();
@@ -159,8 +160,9 @@ namespace TutonesV2::UI
                 if (ImGui::InputInt("Armor", &armor, 10, 25))
                 {
                     armor = std::clamp(armor, 0, 100);
-                    Config::SettingsService::Get().Update([armor](Config::MenuSettings& settings) {
-                        settings.selfArmor = armor;
+                    const int value = armor;
+                    Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                        settings.selfArmor = value;
                     });
                 }
                 ImGui::SameLine();
@@ -182,8 +184,9 @@ namespace TutonesV2::UI
                 if (ImGui::InputInt("Wanted Level", &wantedLevel, 1, 1))
                 {
                     wantedLevel = std::clamp(wantedLevel, 0, 5);
-                    Config::SettingsService::Get().Update([wantedLevel](Config::MenuSettings& settings) {
-                        settings.selfWantedLevel = wantedLevel;
+                    const int value = wantedLevel;
+                    Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                        settings.selfWantedLevel = value;
                     });
                 }
                 ImGui::SameLine();
@@ -266,32 +269,36 @@ namespace TutonesV2::UI
                 if (ImGui::InputInt("Component", &component, 1, 1))
                 {
                     component = std::clamp(component, 0, 11);
-                    Config::SettingsService::Get().Update([component](Config::MenuSettings& settings) {
-                        settings.selfComponent = component;
+                    const int value = component;
+                    Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                        settings.selfComponent = value;
                     });
                 }
                 ImGui::SetNextItemWidth(100.0f);
                 if (ImGui::InputInt("Drawable", &drawable, 1, 5))
                 {
                     drawable = std::max(0, drawable);
-                    Config::SettingsService::Get().Update([drawable](Config::MenuSettings& settings) {
-                        settings.selfDrawable = drawable;
+                    const int value = drawable;
+                    Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                        settings.selfDrawable = value;
                     });
                 }
                 ImGui::SetNextItemWidth(100.0f);
                 if (ImGui::InputInt("Texture", &texture, 1, 5))
                 {
                     texture = std::max(0, texture);
-                    Config::SettingsService::Get().Update([texture](Config::MenuSettings& settings) {
-                        settings.selfTexture = texture;
+                    const int value = texture;
+                    Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                        settings.selfTexture = value;
                     });
                 }
                 ImGui::SetNextItemWidth(100.0f);
                 if (ImGui::InputInt("Palette", &palette, 1, 1))
                 {
                     palette = std::clamp(palette, 0, 3);
-                    Config::SettingsService::Get().Update([palette](Config::MenuSettings& settings) {
-                        settings.selfPalette = palette;
+                    const int value = palette;
+                    Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                        settings.selfPalette = value;
                     });
                 }
 
@@ -537,15 +544,17 @@ namespace TutonesV2::UI
             }
             if (ImGui::Checkbox("Enter spawned vehicle", &enterVehicle))
             {
-                Config::SettingsService::Get().Update([enterVehicle](Config::MenuSettings& settings) {
-                    settings.vehicleEnterAfterSpawn = enterVehicle;
+                const bool value = enterVehicle;
+                Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                    settings.vehicleEnterAfterSpawn = value;
                 });
             }
             ImGui::SameLine();
             if (ImGui::Checkbox("Networked / persistent", &networked))
             {
-                Config::SettingsService::Get().Update([networked](Config::MenuSettings& settings) {
-                    settings.vehicleNetworked = networked;
+                const bool value = networked;
+                Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                    settings.vehicleNetworked = value;
                 });
             }
             if (ImGui::Button("Spawn Vehicle"))
@@ -611,8 +620,9 @@ namespace TutonesV2::UI
             ImGui::SetNextItemWidth(180.0f);
             if (ImGui::SliderFloat("Distance", &directionalDistance, 1.0f, 100.0f, "%.1f"))
             {
-                Config::SettingsService::Get().Update([directionalDistance](Config::MenuSettings& settings) {
-                    settings.teleportDirectionalDistance = directionalDistance;
+                const float value = directionalDistance;
+                Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                    settings.teleportDirectionalDistance = value;
                 });
             }
 
@@ -649,8 +659,9 @@ namespace TutonesV2::UI
             }
             if (ImGui::Checkbox("Resolve ground / water like YimMenuV2", &resolveGround))
             {
-                Config::SettingsService::Get().Update([resolveGround](Config::MenuSettings& settings) {
-                    settings.teleportResolveGround = resolveGround;
+                const bool value = resolveGround;
+                Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                    settings.teleportResolveGround = value;
                 });
             }
             if (ImGui::Button("Teleport to Coordinates"))
