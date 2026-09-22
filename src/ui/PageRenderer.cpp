@@ -9,6 +9,7 @@
 #include "../features/player/SelfOnlineService.hpp"
 #include "../features/protection/ProtectionService.hpp"
 #include "../features/online/OnlineStatusService.hpp"
+#include "../features/online/OnlinePlayerService.hpp"
 #include "../features/online/RequestServicesService.hpp"
 #include "../features/utility/UtilityService.hpp"
 #include "../features/vehicle/VehicleService.hpp"
@@ -1255,6 +1256,115 @@ namespace TutonesV2::UI
             ImGui::SameLine();
             ImGui::Text("Ghost Org: %s", radar.ghostOrganizationApplied ? "ACTIVE" : "OFF");
             ImGui::TextDisabled("%s", radar.message.c_str());
+
+            ImGui::SeparatorText("Players");
+            auto& playerService = Features::Online::OnlinePlayerService::Get();
+            playerService.RequestRefresh();
+            const auto roster = playerService.Snapshot();
+            static int selectedOnlinePlayer{-1};
+
+            if (selectedOnlinePlayer < 0
+                || selectedOnlinePlayer >= 32
+                || !roster.players[static_cast<std::size_t>(selectedOnlinePlayer)].active)
+            {
+                selectedOnlinePlayer = -1;
+                for (int playerId = 0; playerId < 32; ++playerId)
+                {
+                    if (roster.players[static_cast<std::size_t>(playerId)].active
+                        && playerId != roster.localPlayer)
+                    {
+                        selectedOnlinePlayer = playerId;
+                        break;
+                    }
+                }
+            }
+
+            if (ImGui::BeginChild("##online_player_roster", ImVec2(0.0f, 180.0f), true))
+            {
+                for (int playerId = 0; playerId < 32; ++playerId)
+                {
+                    const auto& entry = roster.players[static_cast<std::size_t>(playerId)];
+                    if (!entry.active)
+                        continue;
+
+                    std::string label = entry.name.empty()
+                        ? ("Player " + std::to_string(playerId))
+                        : entry.name;
+                    label += "##online_player_" + std::to_string(playerId);
+
+                    const bool selected = selectedOnlinePlayer == playerId;
+                    if (ImGui::Selectable(label.c_str(), selected))
+                        selectedOnlinePlayer = playerId;
+
+                    ImGui::SameLine();
+                    ImGui::TextDisabled(
+                        "%s%s ID %d",
+                        entry.local ? "[YOU] " : "",
+                        entry.freemodeHost ? "[HOST] " : "",
+                        playerId);
+                }
+            }
+            ImGui::EndChild();
+
+            if (selectedOnlinePlayer >= 0)
+            {
+                const auto& selected = roster.players[static_cast<std::size_t>(selectedOnlinePlayer)];
+                ImGui::Text("%s", selected.name.c_str());
+                if (selected.healthReadable)
+                    ImGui::Text("Health: %d / %d", selected.health, selected.maxHealth);
+                if (selected.armourReadable)
+                {
+                    ImGui::SameLine();
+                    ImGui::Text("Armor: %d", selected.armour);
+                }
+                if (selected.wantedReadable)
+                    ImGui::Text("Wanted: %d", selected.wantedLevel);
+                if (selected.positionReadable)
+                    ImGui::TextDisabled(
+                        "XYZ %.1f, %.1f, %.1f",
+                        selected.position.x,
+                        selected.position.y,
+                        selected.position.z);
+                if (selected.vehicleReadable)
+                    ImGui::TextDisabled("Vehicle handle: %d", selected.vehicle);
+
+                if (selected.latencyReadable)
+                    ImGui::TextDisabled("Latency: %.1f", selected.latency);
+                if (selected.packetLossReadable)
+                {
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("Packet loss: %.2f", selected.packetLoss);
+                }
+                if (selected.resendReadable)
+                {
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("Resends: %d", selected.resendCount);
+                }
+
+                const bool playerActionBlocked =
+                    roster.actionPending || selectedOnlinePlayer == roster.localPlayer;
+                ImGui::BeginDisabled(playerActionBlocked);
+                if (ImGui::Button("Spectate"))
+                    static_cast<void>(playerService.QueueSpectate(selectedOnlinePlayer));
+                ImGui::SameLine();
+                if (ImGui::Button("Teleport To"))
+                    static_cast<void>(playerService.QueueTeleportToPlayer(selectedOnlinePlayer));
+                ImGui::SameLine();
+                if (ImGui::Button("Waypoint To"))
+                    static_cast<void>(playerService.QueueWaypointToPlayer(selectedOnlinePlayer));
+                ImGui::EndDisabled();
+            }
+
+            ImGui::BeginDisabled(roster.actionPending);
+            if (ImGui::Button("Stop Spectating"))
+                static_cast<void>(playerService.QueueStopSpectating());
+            ImGui::EndDisabled();
+            ImGui::TextDisabled(
+                "Roster: %d active | Freemode host: %d | Participants: %d",
+                roster.activeCount,
+                roster.freemodeHost,
+                roster.freemodeParticipants);
+            ImGui::TextDisabled("%s", roster.message.c_str());
 
             ImGui::SeparatorText("Services");
             auto& requests = Features::Online::RequestServicesRuntime::Get();
