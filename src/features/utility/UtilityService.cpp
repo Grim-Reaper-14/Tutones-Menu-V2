@@ -103,6 +103,12 @@ namespace TutonesV2::Features::Utility
             || m_ShowSessionInfo.load(std::memory_order_acquire);
     }
 
+    void UtilityService::Maintain() noexcept
+    {
+        if (NeedsGameLoop())
+            EnsureLoop();
+    }
+
     bool UtilityService::NeedsGameLoop() const noexcept
     {
         return m_ShowCoordinates.load(std::memory_order_acquire)
