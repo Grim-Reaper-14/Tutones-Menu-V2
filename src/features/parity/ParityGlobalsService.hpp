@@ -50,6 +50,7 @@ namespace TutonesV2::Features::Parity
 
         bool QueueBunkerFastProduction(bool enabled) noexcept;
         bool QueueBunkerProfile(BunkerProfile profile) noexcept;
+        bool QueueBunkerInstantSell() noexcept;
 
         bool QueueSpecialCargoSourcing(
             int amount,
@@ -59,6 +60,13 @@ namespace TutonesV2::Features::Parity
         bool QueueSpecialCargoCooldowns(int buyMilliseconds, int sellMilliseconds) noexcept;
         bool QueueSpecialCargoCratePrice(int tierIndex, int value) noexcept;
         bool QueueSpecialCargoUniqueItem(int uniqueItemValue) noexcept;
+        bool QueueSpecialCargoInstantBuy() noexcept;
+        bool QueueSpecialCargoInstantSell() noexcept;
+
+        bool QueueAcidLabFullStock() noexcept;
+
+        bool QueueLuckyWheelGlobals() noexcept;
+        bool QueueLuckyWheelPrize(int prize) noexcept;
 
     private:
         ParityGlobalsService() = default;
