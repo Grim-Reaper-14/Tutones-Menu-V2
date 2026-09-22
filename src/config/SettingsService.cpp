@@ -238,6 +238,14 @@ namespace TutonesV2::Config
                 else if (key == "resolve_ground") loaded.teleportResolveGround = ParseBool(value, loaded.teleportResolveGround);
                 else if (key == "directional_distance") loaded.teleportDirectionalDistance = ParseFloat(value, loaded.teleportDirectionalDistance);
             }
+            else if (section == "misc")
+            {
+                if (key == "show_coordinates") loaded.miscShowCoordinates = ParseBool(value, loaded.miscShowCoordinates);
+                else if (key == "show_heading") loaded.miscShowHeading = ParseBool(value, loaded.miscShowHeading);
+                else if (key == "show_fps") loaded.miscShowFps = ParseBool(value, loaded.miscShowFps);
+                else if (key == "show_session_info") loaded.miscShowSessionInfo = ParseBool(value, loaded.miscShowSessionInfo);
+                else if (key == "disable_camera_shake") loaded.miscDisableCameraShake = ParseBool(value, loaded.miscDisableCameraShake);
+            }
         }
 
         Clamp(loaded);
@@ -308,7 +316,14 @@ namespace TutonesV2::Config
         output << "y=" << snapshot.teleportY << "\n";
         output << "z=" << snapshot.teleportZ << "\n";
         output << "resolve_ground=" << (snapshot.teleportResolveGround ? "true" : "false") << "\n";
-        output << "directional_distance=" << snapshot.teleportDirectionalDistance << "\n";
+        output << "directional_distance=" << snapshot.teleportDirectionalDistance << "\n\n";
+
+        output << "[misc]\n";
+        output << "show_coordinates=" << (snapshot.miscShowCoordinates ? "true" : "false") << "\n";
+        output << "show_heading=" << (snapshot.miscShowHeading ? "true" : "false") << "\n";
+        output << "show_fps=" << (snapshot.miscShowFps ? "true" : "false") << "\n";
+        output << "show_session_info=" << (snapshot.miscShowSessionInfo ? "true" : "false") << "\n";
+        output << "disable_camera_shake=" << (snapshot.miscDisableCameraShake ? "true" : "false") << "\n";
 
         output.flush();
         if (!output.good())

@@ -80,6 +80,16 @@ namespace TutonesV2::App
             return false;
         }
 
+        {
+            const auto settings = Config::SettingsService::Get().Snapshot();
+            auto& utilities = Features::Utility::UtilityService::Get();
+            utilities.SetShowCoordinates(settings.miscShowCoordinates);
+            utilities.SetShowHeading(settings.miscShowHeading);
+            utilities.SetShowFps(settings.miscShowFps);
+            utilities.SetShowSessionInfo(settings.miscShowSessionInfo);
+            utilities.SetDisableCameraShake(settings.miscDisableCameraShake);
+        }
+
         Core::Logger::Get().Info("core", "Tutones Menu V2 DX12 shell ready; Insert or F4 toggles the menu");
         return true;
     }

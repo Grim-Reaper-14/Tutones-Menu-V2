@@ -39,6 +39,12 @@ namespace TutonesV2::Config
         float teleportZ{};
         bool teleportResolveGround{true};
         float teleportDirectionalDistance{5.0f};
+
+        bool miscShowCoordinates{};
+        bool miscShowHeading{};
+        bool miscShowFps{};
+        bool miscShowSessionInfo{};
+        bool miscDisableCameraShake{};
     };
 
     class SettingsService final
