@@ -346,7 +346,7 @@ namespace TutonesV2::Game
             Core::Logger::Get().Info(
                 "game",
                 std::string("Native canary passed: PLAYER_PED_ID returned ") + std::to_string(*ped));
-            Config::RestoreSavedFeatureState();
+            Config::ScheduleSavedFeatureRestore();
             return;
         }
 

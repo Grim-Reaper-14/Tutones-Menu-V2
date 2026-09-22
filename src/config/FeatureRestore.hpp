@@ -2,5 +2,5 @@
 
 namespace TutonesV2::Config
 {
-    void RestoreSavedFeatureState() noexcept;
+    void ScheduleSavedFeatureRestore() noexcept;
 }
