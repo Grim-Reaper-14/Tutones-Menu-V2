@@ -9,6 +9,7 @@
 #include "../features/player/SelfOnlineService.hpp"
 #include "../features/protection/ProtectionService.hpp"
 #include "../features/online/OnlineStatusService.hpp"
+#include "../features/online/RequestServicesService.hpp"
 #include "../features/utility/UtilityService.hpp"
 #include "../features/vehicle/VehicleService.hpp"
 #include "../features/weapon/WeaponService.hpp"
@@ -1255,10 +1256,45 @@ namespace TutonesV2::UI
             ImGui::Text("Ghost Org: %s", radar.ghostOrganizationApplied ? "ACTIVE" : "OFF");
             ImGui::TextDisabled("%s", radar.message.c_str());
 
+            ImGui::SeparatorText("Services");
+            auto& requests = Features::Online::RequestServicesRuntime::Get();
+            const auto requestState = requests.Snapshot();
+            const bool serviceBlocked = requestState.pending || !status.sessionStarted || !status.globalsReady;
+
+            ImGui::BeginDisabled(serviceBlocked);
+            if (ImGui::BeginTable("##online_services_grid", 3, ImGuiTableFlags_SizingStretchSame))
+            {
+                for (std::size_t i = 0; i < Features::Online::RequestServiceCatalog.size(); ++i)
+                {
+                    ImGui::TableNextColumn();
+                    const auto& entry = Features::Online::RequestServiceCatalog[i];
+                    ImGui::PushID(static_cast<int>(i));
+                    if (ImGui::Button(entry.label, ImVec2(-1.0f, 0.0f)))
+                    {
+                        static_cast<void>(
+                            requests.QueueRequest(
+                                static_cast<Features::Online::RequestService>(i)));
+                    }
+                    ImGui::PopID();
+                }
+                ImGui::EndTable();
+            }
+            if (ImGui::Button("SuperVolito Pickup"))
+                static_cast<void>(requests.QueueSuperVolito());
+            ImGui::SameLine();
+            if (ImGui::Button("Ballistic Equip"))
+                static_cast<void>(requests.QueueBallisticInstantEquip());
+            ImGui::SameLine();
+            if (ImGui::Button("Ballistic Remove"))
+                static_cast<void>(requests.QueueBallisticInstantRemove());
+            ImGui::EndDisabled();
+
+            ImGui::TextDisabled("%s", requestState.message.c_str());
+
             ImGui::SeparatorText("V1 Expansion");
             ImGui::TextWrapped(
-                "Player roster, services, session switching and protection controls are the next Online backend pass. "
-                "This page is already using the same session/globals/freemode readiness gates as the current V2 runtime.");
+                "The V1 player roster/session actions are being moved to the V2 scheduler next; "
+                "service requests and local Online state are already active here.");
         }
 
         void RenderWorld() noexcept
