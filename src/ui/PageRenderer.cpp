@@ -1,6 +1,7 @@
 #include "PageRenderer.hpp"
 
 #include "MenuTheme.hpp"
+#include "VehicleThumbnailCache.hpp"
 #include "../backend/BackendHub.hpp"
 #include "../config/SettingsService.hpp"
 #include "../features/player/PlayerService.hpp"
@@ -26,6 +27,7 @@
 #include <cstring>
 #include <limits>
 #include <string>
+#include <vector>
 
 namespace TutonesV2::UI
 {
