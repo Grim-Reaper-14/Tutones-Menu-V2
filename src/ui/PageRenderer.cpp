@@ -1136,7 +1136,15 @@ namespace TutonesV2::UI
             minute = std::clamp(minute, 0, 59);
 
             if (ImGui::Button("Apply Time"))
+            {
                 static_cast<void>(service.QueueSetTime(hour, minute));
+                const int savedHour = hour;
+                const int savedMinute = minute;
+                Config::SettingsService::Get().Update([savedHour, savedMinute](Config::MenuSettings& settings) {
+                    settings.worldHour = savedHour;
+                    settings.worldMinute = savedMinute;
+                });
+            }
             ImGui::SameLine();
             if (ImGui::Button("Refresh Clock"))
                 service.RequestClockSample();
@@ -1162,10 +1170,22 @@ namespace TutonesV2::UI
             }
 
             if (ImGui::Button("Apply Weather"))
+            {
                 static_cast<void>(service.QueueWeather(weatherIndex));
+                const int savedWeather = weatherIndex;
+                Config::SettingsService::Get().Update([savedWeather](Config::MenuSettings& settings) {
+                    settings.worldWeatherOverride = true;
+                    settings.worldWeatherIndex = savedWeather;
+                });
+            }
             ImGui::SameLine();
             if (ImGui::Button("Clear Weather Override"))
+            {
                 static_cast<void>(service.QueueClearWeather());
+                Config::SettingsService::Get().Update([](Config::MenuSettings& settings) {
+                    settings.worldWeatherOverride = false;
+                });
+            }
 
             bool blackout = state.blackout;
             if (ImGui::Checkbox("Blackout", &blackout))
@@ -1208,7 +1228,16 @@ namespace TutonesV2::UI
             }
 
             if (ImGui::Button("Normal Density"))
+            {
                 service.ResetDensity();
+                Config::SettingsService::Get().Update([](Config::MenuSettings& settings) {
+                    settings.worldPedDensity = 1.0f;
+                    settings.worldScenarioPedDensity = 1.0f;
+                    settings.worldVehicleDensity = 1.0f;
+                    settings.worldRandomVehicleDensity = 1.0f;
+                    settings.worldParkedVehicleDensity = 1.0f;
+                });
+            }
             ImGui::SameLine();
             if (ImGui::Button("Sparse World"))
             {
@@ -1217,6 +1246,13 @@ namespace TutonesV2::UI
                 service.SetVehicleDensity(0.20f);
                 service.SetRandomVehicleDensity(0.20f);
                 service.SetParkedVehicleDensity(0.25f);
+                Config::SettingsService::Get().Update([](Config::MenuSettings& settings) {
+                    settings.worldPedDensity = 0.15f;
+                    settings.worldScenarioPedDensity = 0.15f;
+                    settings.worldVehicleDensity = 0.20f;
+                    settings.worldRandomVehicleDensity = 0.20f;
+                    settings.worldParkedVehicleDensity = 0.25f;
+                });
             }
             ImGui::SameLine();
             if (ImGui::Button("Empty World"))
@@ -1226,6 +1262,13 @@ namespace TutonesV2::UI
                 service.SetVehicleDensity(0.0f);
                 service.SetRandomVehicleDensity(0.0f);
                 service.SetParkedVehicleDensity(0.0f);
+                Config::SettingsService::Get().Update([](Config::MenuSettings& settings) {
+                    settings.worldPedDensity = 0.0f;
+                    settings.worldScenarioPedDensity = 0.0f;
+                    settings.worldVehicleDensity = 0.0f;
+                    settings.worldRandomVehicleDensity = 0.0f;
+                    settings.worldParkedVehicleDensity = 0.0f;
+                });
             }
 
             ImGui::SeparatorText("Clear Nearby World");
