@@ -37,6 +37,7 @@ namespace TutonesV2::Features::Utility
         void SetDisableCameraShake(bool enabled) noexcept;
 
         [[nodiscard]] bool AnyOverlayVisible() const noexcept;
+        void Maintain() noexcept;
 
     private:
         UtilityService() = default;
