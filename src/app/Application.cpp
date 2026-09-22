@@ -2,7 +2,7 @@
 
 #include "../backend/BackendHub.hpp"
 #include "../config/SettingsService.hpp"
-#include "../core/Logger.hpp
+#include "../core/Logger.hpp"
 #include "../game/GameRuntime.hpp"
 #include "../features/player/PlayerService.hpp"
 #include "../features/player/PlayerStatsService.hpp"
