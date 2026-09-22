@@ -212,6 +212,11 @@ namespace TutonesV2::Game
         return m_NativeCanaryPassed.load(std::memory_order_acquire);
     }
 
+    bool GameRuntime::IsOnGameThread() const noexcept
+    {
+        return Native::NativeRegistry::Get().CanInvokeOnCurrentThread();
+    }
+
     NativeRuntimeState GameRuntime::NativeState() const noexcept
     {
         return m_NativeState.load(std::memory_order_acquire);
