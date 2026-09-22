@@ -6,9 +6,12 @@
 #include "../features/player/PlayerService.hpp"
 #include "../features/player/PlayerStatsService.hpp"
 #include "../features/player/SelfOnlineService.hpp"
+#include "../features/online/OnlineStatusService.hpp"
+#include "../features/utility/UtilityService.hpp"
 #include "../features/vehicle/VehicleService.hpp"
 #include "../features/weapon/WeaponService.hpp"
 #include "../features/world/TeleportService.hpp"
+#include "../features/world/WorldService.hpp"
 #include "../game/GameRuntime.hpp"
 
 #include <imgui.h>
@@ -567,12 +570,29 @@ namespace TutonesV2::UI
 
             ImGui::SeparatorText("Current Vehicle");
             ImGui::BeginDisabled(!service.IsReady() || !nativeReady);
+
+            bool vehicleGodMode = service.VehicleGodMode();
+            bool keepVehicleClean = service.KeepVehicleClean();
+            bool hornBoost = service.HornBoost();
+
+            if (ImGui::Checkbox("Vehicle God Mode", &vehicleGodMode))
+                static_cast<void>(service.SetVehicleGodMode(vehicleGodMode));
+            if (ImGui::Checkbox("Keep Vehicle Clean", &keepVehicleClean))
+                static_cast<void>(service.SetKeepVehicleClean(keepVehicleClean));
+            if (ImGui::Checkbox("Horn Boost", &hornBoost))
+                static_cast<void>(service.SetHornBoost(hornBoost));
+
             if (ImGui::Button("Repair Current"))
                 static_cast<void>(service.QueueRepairCurrent());
             ImGui::SameLine();
             if (ImGui::Button("Clean Current"))
                 static_cast<void>(service.QueueCleanCurrent());
+            ImGui::SameLine();
+            if (ImGui::Button("Set Upright"))
+                static_cast<void>(service.QueueSetUpright());
+
             ImGui::EndDisabled();
+            ImGui::TextDisabled("Horn Boost uses the normal horn control while driving.");
         }
 
         void RenderTeleport() noexcept
@@ -674,18 +694,312 @@ namespace TutonesV2::UI
                 ImGui::TextDisabled("Resolving destination on the GTA scheduler...");
         }
 
+        void RenderOnline() noexcept
+        {
+            auto& statusService = Features::Online::OnlineStatusService::Get();
+            auto& selfOnline = Features::Player::SelfOnlineService::Get();
+
+            statusService.RequestRefresh();
+            const auto status = statusService.Snapshot();
+            const auto radar = selfOnline.Snapshot();
+
+            ImGui::SeparatorText("Session Status");
+            ImGui::BulletText("Session: %s", status.sessionStarted ? "ONLINE" : "OFFLINE");
+            ImGui::BulletText("Script globals: %s", status.globalsReady ? "READY" : "WAITING");
+            ImGui::BulletText("Freemode thread: %s", status.freemodeReady ? "READY" : "WAITING");
+            ImGui::BulletText("Network time: %s", status.networkTimeReady ? "READY" : "WAITING");
+            ImGui::BulletText("Local player ID: %d", status.localPlayer);
+            ImGui::BulletText(
+                "Script threads: %d active / %d total",
+                status.activeScriptThreads,
+                status.scriptThreadCount);
+            if (status.networkTimeReady)
+                ImGui::BulletText("Network time value: %u", status.networkTime);
+            ImGui::TextDisabled("%s", status.message.c_str());
+
+            ImGui::SeparatorText("Player State");
+            int radarMode = static_cast<int>(selfOnline.Mode());
+            constexpr std::array<const char*, 3> radarModes{{"Off", "Off Radar", "Ghost Organization"}};
+
+            ImGui::BeginDisabled(!Game::GameRuntime::Get().NativeReady() || !selfOnline.IsReady());
+            ImGui::SetNextItemWidth(220.0f);
+            if (ImGui::Combo(
+                    "Radar / Organization",
+                    &radarMode,
+                    radarModes.data(),
+                    static_cast<int>(radarModes.size())))
+            {
+                static_cast<void>(selfOnline.SetMode(
+                    static_cast<Features::Player::RadarMode>(std::clamp(radarMode, 0, 2))));
+            }
+            ImGui::EndDisabled();
+
+            ImGui::Text("Off Radar: %s", radar.offRadarApplied ? "ACTIVE" : "OFF");
+            ImGui::SameLine();
+            ImGui::Text("Ghost Org: %s", radar.ghostOrganizationApplied ? "ACTIVE" : "OFF");
+            ImGui::TextDisabled("%s", radar.message.c_str());
+
+            ImGui::SeparatorText("V1 Expansion");
+            ImGui::TextWrapped(
+                "Player roster, services, session switching and protection controls are the next Online backend pass. "
+                "This page is already using the same session/globals/freemode readiness gates as the current V2 runtime.");
+        }
+
         void RenderWorld() noexcept
         {
-            PlannedSection("Time & Weather", "World-state controls will be grouped here when the game runtime is connected.", "WorldService");
-            PlannedSection("Nearby World", "Entity and world utilities will use scheduled backend work rather than per-frame scans.", "WorldService / GameScheduler");
-            PlannedSection("Services", "Request-service tools can be added here once native and script systems are proven stable.", "WorldService / ScriptRuntime");
+            auto& service = Features::World::WorldService::Get();
+            const auto state = service.Snapshot();
+
+            static int hour = 12;
+            static int minute = 0;
+            static int weatherIndex = 1;
+            static float clearRadius = 75.0f;
+
+            if (state.selectedHour >= 0 && state.selectedHour <= 23)
+                hour = state.selectedHour;
+            if (state.selectedMinute >= 0 && state.selectedMinute <= 59)
+                minute = state.selectedMinute;
+            weatherIndex = std::clamp(state.weatherIndex, 0, static_cast<int>(Features::World::WeatherCodes.size()) - 1);
+
+            ImGui::BeginDisabled(!state.ready || state.actionPending);
+
+            ImGui::SeparatorText("Time");
+            ImGui::SetNextItemWidth(120.0f);
+            ImGui::InputInt("Hour", &hour, 1, 1);
+            ImGui::SetNextItemWidth(120.0f);
+            ImGui::InputInt("Minute", &minute, 1, 5);
+            hour = std::clamp(hour, 0, 23);
+            minute = std::clamp(minute, 0, 59);
+
+            if (ImGui::Button("Apply Time"))
+                static_cast<void>(service.QueueSetTime(hour, minute));
+            ImGui::SameLine();
+            if (ImGui::Button("Refresh Clock"))
+                service.RequestClockSample();
+
+            bool freezeClock = state.freezeClock;
+            if (ImGui::Checkbox("Freeze Time", &freezeClock))
+                static_cast<void>(service.SetFreezeClock(freezeClock));
+
+            if (state.clockHour >= 0 && state.clockMinute >= 0)
+                ImGui::TextDisabled("Observed GTA clock: %02d:%02d", state.clockHour, state.clockMinute);
+
+            ImGui::SeparatorText("Weather");
+            ImGui::SetNextItemWidth(220.0f);
+            if (ImGui::Combo(
+                    "Weather",
+                    &weatherIndex,
+                    Features::World::WeatherCodes.data(),
+                    static_cast<int>(Features::World::WeatherCodes.size())))
+            {
+            }
+
+            if (ImGui::Button("Apply Weather"))
+                static_cast<void>(service.QueueWeather(weatherIndex));
+            ImGui::SameLine();
+            if (ImGui::Button("Clear Weather Override"))
+                static_cast<void>(service.QueueClearWeather());
+
+            bool blackout = state.blackout;
+            if (ImGui::Checkbox("Blackout", &blackout))
+                static_cast<void>(service.QueueBlackout(blackout));
+
+            ImGui::SeparatorText("Population Density");
+            float pedDensity = state.pedDensity;
+            float scenarioDensity = state.scenarioPedDensity;
+            float vehicleDensity = state.vehicleDensity;
+            float randomVehicleDensity = state.randomVehicleDensity;
+            float parkedDensity = state.parkedVehicleDensity;
+
+            if (ImGui::SliderFloat("Ambient Peds", &pedDensity, 0.0f, 1.0f, "%.2f"))
+                service.SetPedDensity(pedDensity);
+            if (ImGui::SliderFloat("Scenario Peds", &scenarioDensity, 0.0f, 1.0f, "%.2f"))
+                service.SetScenarioPedDensity(scenarioDensity);
+            if (ImGui::SliderFloat("Traffic", &vehicleDensity, 0.0f, 1.0f, "%.2f"))
+                service.SetVehicleDensity(vehicleDensity);
+            if (ImGui::SliderFloat("Random Traffic", &randomVehicleDensity, 0.0f, 1.0f, "%.2f"))
+                service.SetRandomVehicleDensity(randomVehicleDensity);
+            if (ImGui::SliderFloat("Parked Vehicles", &parkedDensity, 0.0f, 1.0f, "%.2f"))
+                service.SetParkedVehicleDensity(parkedDensity);
+
+            if (ImGui::Button("Normal Density"))
+                service.ResetDensity();
+            ImGui::SameLine();
+            if (ImGui::Button("Sparse World"))
+            {
+                service.SetPedDensity(0.15f);
+                service.SetScenarioPedDensity(0.15f);
+                service.SetVehicleDensity(0.20f);
+                service.SetRandomVehicleDensity(0.20f);
+                service.SetParkedVehicleDensity(0.25f);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Empty World"))
+            {
+                service.SetPedDensity(0.0f);
+                service.SetScenarioPedDensity(0.0f);
+                service.SetVehicleDensity(0.0f);
+                service.SetRandomVehicleDensity(0.0f);
+                service.SetParkedVehicleDensity(0.0f);
+            }
+
+            ImGui::SeparatorText("Clear Nearby World");
+            ImGui::SetNextItemWidth(180.0f);
+            ImGui::SliderFloat("Radius", &clearRadius, 5.0f, 250.0f, "%.0f m");
+            if (ImGui::Button("Clear Peds"))
+                static_cast<void>(service.QueueClearPeds(clearRadius));
+            ImGui::SameLine();
+            if (ImGui::Button("Clear Vehicles"))
+                static_cast<void>(service.QueueClearVehicles(clearRadius));
+            ImGui::SameLine();
+            if (ImGui::Button("Clear Objects"))
+                static_cast<void>(service.QueueClearObjects(clearRadius));
+            if (ImGui::Button("Clear Ambient World"))
+                static_cast<void>(service.QueueClearAmbient(clearRadius));
+
+            ImGui::EndDisabled();
+
+            ImGui::Spacing();
+            ImGui::TextDisabled(
+                "Density loop: %s | World loop: %s",
+                state.densityLoopRunning ? "ACTIVE" : "IDLE",
+                state.worldLoopRunning ? "ACTIVE" : "IDLE");
+            ImGui::TextWrapped("World status: %s", state.message.c_str());
         }
 
         void RenderRecovery() noexcept
         {
-            PlannedSection("Stats & Unlocks", "Stats, unlocks, and progression tools will remain grouped under Recovery.", "RecoveryService");
-            PlannedSection("Businesses", "Business helpers will be wired only after globals and script access are validated.", "RecoveryService / ScriptRuntime");
-            PlannedSection("Heists", "Heist-state controls will use explicit backend requests with validation before writes.", "RecoveryService / ScriptRuntime");
+            auto& stats = Features::Player::PlayerStatsService::Get();
+            const auto state = stats.Snapshot();
+            const bool nativeReady = Game::GameRuntime::Get().NativeReady();
+
+            static std::uint64_t lastRevision{};
+            static int rank{1};
+            static int rp{};
+            static int kills{};
+            static int deaths{};
+
+            if (state.revision != lastRevision)
+            {
+                lastRevision = state.revision;
+                if (state.readable)
+                {
+                    rank = state.rank;
+                    rp = state.rp;
+                    kills = state.kills;
+                    deaths = state.deaths;
+                }
+            }
+
+            ImGui::SeparatorText("Stats & Progression");
+            if (state.readable)
+            {
+                ImGui::Text("Active character: MP%d", state.characterIndex);
+                ImGui::Text("Observed K/D: %.2f", state.kdRatio);
+            }
+
+            ImGui::BeginDisabled(!stats.IsReady() || !nativeReady || state.pending);
+            const int oldRank = rank;
+            ImGui::InputInt("Rank##recovery", &rank, 1, 10);
+            rank = std::clamp(rank, 1, 8000);
+            if (rank != oldRank)
+            {
+                if (const auto requiredRp = Features::Player::PlayerStatsService::RpForRank(rank))
+                    rp = *requiredRp;
+            }
+            ImGui::InputInt("RP##recovery", &rp, 100, 1000);
+            ImGui::InputInt("Kills##recovery", &kills, 1, 10);
+            ImGui::InputInt("Deaths##recovery", &deaths, 1, 10);
+            rp = std::max(0, rp);
+            kills = std::max(0, kills);
+            deaths = std::max(0, deaths);
+
+            if (ImGui::Button("Apply Recovery Stats"))
+                static_cast<void>(stats.QueueApply(rank, rp, kills, deaths));
+            ImGui::SameLine();
+            if (ImGui::Button("Refresh Recovery Stats"))
+                static_cast<void>(stats.QueueRefresh());
+            ImGui::EndDisabled();
+
+            ImGui::TextDisabled("%s", state.message.c_str());
+
+            PlannedSection(
+                "Businesses",
+                "V1 business tools (Nightclub, Bunker, Special Cargo, Vehicle Cargo and more) are the next globals-backed Recovery pass.",
+                "Recovery / Script Globals");
+            PlannedSection(
+                "Heists",
+                "V1 heist setup and state editors will be ported only from verified Enhanced globals/script paths.",
+                "Recovery / Script Runtime");
+        }
+
+        void RenderMisc() noexcept
+        {
+            auto& utilities = Features::Utility::UtilityService::Get();
+            utilities.Maintain();
+            const auto state = utilities.Snapshot();
+
+            ImGui::SeparatorText("HUD / Overlay");
+            bool showCoordinates = state.showCoordinates;
+            bool showHeading = state.showHeading;
+            bool showFps = state.showFps;
+            bool showSessionInfo = state.showSessionInfo;
+            bool disableCameraShake = state.disableCameraShake;
+
+            if (ImGui::Checkbox("Coordinates Overlay", &showCoordinates))
+            {
+                utilities.SetShowCoordinates(showCoordinates);
+                Config::SettingsService::Get().Update([showCoordinates](Config::MenuSettings& settings) {
+                    settings.miscShowCoordinates = showCoordinates;
+                });
+            }
+            if (ImGui::Checkbox("Heading Overlay", &showHeading))
+            {
+                utilities.SetShowHeading(showHeading);
+                Config::SettingsService::Get().Update([showHeading](Config::MenuSettings& settings) {
+                    settings.miscShowHeading = showHeading;
+                });
+            }
+            if (ImGui::Checkbox("FPS Overlay", &showFps))
+            {
+                utilities.SetShowFps(showFps);
+                Config::SettingsService::Get().Update([showFps](Config::MenuSettings& settings) {
+                    settings.miscShowFps = showFps;
+                });
+            }
+            if (ImGui::Checkbox("Session Info Overlay", &showSessionInfo))
+            {
+                utilities.SetShowSessionInfo(showSessionInfo);
+                Config::SettingsService::Get().Update([showSessionInfo](Config::MenuSettings& settings) {
+                    settings.miscShowSessionInfo = showSessionInfo;
+                });
+            }
+
+            ImGui::SeparatorText("Camera");
+            if (ImGui::Checkbox("Disable Camera Shake", &disableCameraShake))
+            {
+                utilities.SetDisableCameraShake(disableCameraShake);
+                Config::SettingsService::Get().Update([disableCameraShake](Config::MenuSettings& settings) {
+                    settings.miscDisableCameraShake = disableCameraShake;
+                });
+            }
+
+            ImGui::SeparatorText("Live Player Position");
+            if (state.positionReadable)
+            {
+                ImGui::Text(
+                    "XYZ: %.3f, %.3f, %.3f",
+                    state.position.x,
+                    state.position.y,
+                    state.position.z);
+                ImGui::Text("Heading: %.2f", state.heading);
+            }
+            else
+            {
+                ImGui::TextDisabled("Enable Coordinates or Heading to sample live position.");
+            }
+
+            ImGui::TextDisabled("Overlay settings are saved in Tutones-Menu-V2.ini.");
         }
 
         void RenderSettings() noexcept
@@ -791,9 +1105,11 @@ namespace TutonesV2::UI
         case MenuPage::Self: RenderSelf(); break;
         case MenuPage::Weapons: RenderWeapons(); break;
         case MenuPage::Vehicle: RenderVehicle(); break;
+        case MenuPage::Online: RenderOnline(); break;
         case MenuPage::Teleport: RenderTeleport(); break;
         case MenuPage::World: RenderWorld(); break;
         case MenuPage::Recovery: RenderRecovery(); break;
+        case MenuPage::Misc: RenderMisc(); break;
         case MenuPage::Settings: RenderSettings(); break;
         }
     }
