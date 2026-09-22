@@ -68,6 +68,7 @@ add_library(Tutones-Menu-V2 SHARED
     src/ui/Menu.cpp
     src/ui/MenuTheme.cpp
     src/ui/PageRenderer.cpp
+    src/ui/UtilityOverlay.cpp
 )
 
 target_include_directories(Tutones-Menu-V2 PRIVATE src)

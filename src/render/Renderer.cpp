@@ -2,6 +2,7 @@
 
 #include "../core/Logger.hpp"
 #include "../ui/Menu.hpp"
+#include "../ui/UtilityOverlay.hpp"
 
 #include <imgui.h>
 #include <imgui_impl_dx12.h>
@@ -236,7 +237,7 @@ namespace TutonesV2::Render
                 open ? "Insert/F4 opened V2 menu state" : "Insert/F4 closed V2 menu state");
         }
 
-        if (!UI::Menu::Get().IsOpen())
+        if (!UI::Menu::Get().IsOpen() && !UI::UtilityOverlay::AnyVisible())
             return;
         if (!m_CommandQueue.load(std::memory_order_acquire))
             return;
@@ -519,6 +520,7 @@ namespace TutonesV2::Render
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
         UI::Menu::Get().Render();
+        UI::UtilityOverlay::Render();
         ImGui::Render();
 
         ImDrawData* drawData = ImGui::GetDrawData();
