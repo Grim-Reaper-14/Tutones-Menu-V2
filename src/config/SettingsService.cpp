@@ -340,7 +340,7 @@ namespace TutonesV2::Config
         }
 
         output << "# Tutones Menu V2 settings\n";
-        output << "# Gameplay feature toggles are intentionally not auto-restored yet.\n\n";
+        output << "# Gameplay feature toggles are restored after the native runtime reaches Ready.\n\n";
 
         output << "[menu]\n";
         output << "selected_page=" << snapshot.selectedPage << "\n\n";
