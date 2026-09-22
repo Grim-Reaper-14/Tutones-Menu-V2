@@ -7,6 +7,8 @@
 #include "../features/player/PlayerService.hpp"
 #include "../features/player/PlayerStatsService.hpp"
 #include "../features/player/SelfOnlineService.hpp"
+#include "../features/online/OnlineStatusService.hpp"
+#include "../features/utility/UtilityService.hpp"
 #include "../features/vehicle/VehicleService.hpp"
 #include "../features/weapon/WeaponService.hpp"
 #include "../features/world/TeleportService.hpp"
@@ -64,6 +66,8 @@ namespace TutonesV2::App
             || !Features::Player::PlayerService::Get().Initialize()
             || !Features::Player::SelfOnlineService::Get().Initialize()
             || !Features::Player::PlayerStatsService::Get().Initialize()
+            || !Features::Online::OnlineStatusService::Get().Initialize()
+            || !Features::Utility::UtilityService::Get().Initialize()
             || !Features::Weapon::WeaponService::Get().Initialize()
             || !Features::Vehicle::VehicleService::Get().Initialize()
             || !Features::World::TeleportService::Get().Initialize()
@@ -90,6 +94,8 @@ namespace TutonesV2::App
         Features::World::TeleportService::Get().Shutdown();
         Features::Vehicle::VehicleService::Get().Shutdown();
         Features::Weapon::WeaponService::Get().Shutdown();
+        Features::Utility::UtilityService::Get().Shutdown();
+        Features::Online::OnlineStatusService::Get().Shutdown();
         Features::Player::PlayerStatsService::Get().Shutdown();
         Features::Player::SelfOnlineService::Get().Shutdown();
         Features::Player::PlayerService::Get().Shutdown();
