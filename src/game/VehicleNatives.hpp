@@ -1,0 +1,557 @@
+#pragma once
+
+#include "Natives.hpp"
+#include "PlayerNatives.hpp"
+#include "GamePointers.hpp"
+#include "native/NativeCallContext.hpp"
+#include "native/NativeRegistry.hpp"
+#include "../core/logging/Logger.hpp"
+
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <optional>
+#include <string>
+#include <string_view>
+
+namespace TutonesV2::Game
+{
+    using Vector3 = Native::NativeVector3;
+
+    namespace VehicleNatives
+    {
+        namespace Detail
+        {
+            struct NativeProgram final
+            {
+                std::byte pad00[0x2C]{};
+                std::uint32_t nativeCount{};
+                std::byte pad30[0x10]{};
+                Native::NativeHandler* nativeEntrypoints{};
+                std::byte pad48[0x38]{};
+            };
+
+            static_assert(offsetof(NativeProgram, nativeCount) == 0x2C);
+            static_assert(offsetof(NativeProgram, nativeEntrypoints) == 0x40);
+            static_assert(sizeof(NativeProgram) == 0x80);
+
+            enum SpawnerHandlerIndex : std::size_t
+            {
+                GetModelDimensions,
+                GetOffsetFromEntityInWorldCoords,
+                SpawnerHandlerCount,
+            };
+
+            inline std::array<Native::NativeHandler, SpawnerHandlerCount>& SpawnerHandlers() noexcept
+            {
+                static std::array<Native::NativeHandler, SpawnerHandlerCount> handlers{};
+                return handlers;
+            }
+
+            inline bool ResolveSpawnerHandlers() noexcept
+            {
+                auto& handlers = SpawnerHandlers();
+                if (handlers[0] && handlers[1])
+                    return true;
+                if (!Native::NativeRegistry::Get().CanInvokeOnCurrentThread())
+                    return false;
+
+                const auto init = GamePointers::Get().InitNativeTables();
+                if (!init)
+                    return false;
+
+                // Current Enhanced hashes from YimMenuV2's enhanced crossmap.
+                std::array<std::uint64_t, SpawnerHandlerCount> slots{
+                    0xC93BAF616F1C680Full, // GET_MODEL_DIMENSIONS
+                    0x0D1381B6E0F3987Dull, // GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS
+                };
+
+                NativeProgram program{};
+                program.nativeCount = static_cast<std::uint32_t>(slots.size());
+                program.nativeEntrypoints = reinterpret_cast<Native::NativeHandler*>(slots.data());
+                init(&program);
+
+                for (std::size_t i = 0; i < slots.size(); ++i)
+                    handlers[i] = reinterpret_cast<Native::NativeHandler>(static_cast<std::uintptr_t>(slots[i]));
+                return handlers[0] && handlers[1];
+            }
+
+            enum SpawnPostHandlerIndex : std::size_t
+            {
+                DecorSetInt,
+                VehToNet,
+                SetNetworkIdExistsOnAllMachines,
+                SetNetworkIdCanMigrate,
+                SetEntityAsMissionEntity,
+                SpawnPostHandlerCount,
+            };
+
+            inline std::array<Native::NativeHandler, SpawnPostHandlerCount>& SpawnPostHandlers() noexcept
+            {
+                static std::array<Native::NativeHandler, SpawnPostHandlerCount> handlers{};
+                return handlers;
+            }
+
+            inline bool ResolveSpawnPostHandlers() noexcept
+            {
+                auto& handlers = SpawnPostHandlers();
+                if (handlers[0] && handlers[1] && handlers[2] && handlers[3] && handlers[4])
+                    return true;
+                if (!Native::NativeRegistry::Get().CanInvokeOnCurrentThread())
+                    return false;
+
+                const auto init = GamePointers::Get().InitNativeTables();
+                if (!init)
+                    return false;
+
+                // Current GTA V Enhanced mappings from YimMenuV2's enhanced crossmap:
+                // DECOR_SET_INT, VEH_TO_NET, SET_NETWORK_ID_EXISTS_ON_ALL_MACHINES,
+                // SET_NETWORK_ID_CAN_MIGRATE and SET_ENTITY_AS_MISSION_ENTITY.
+                std::array<std::uint64_t, SpawnPostHandlerCount> slots{
+                    0xEE8559BBFC27701Bull,
+                    0x913A6486719A87D2ull,
+                    0x3C1752E361ED8FC9ull,
+                    0x8FC511FC963C67E5ull,
+                    0xEE0BCDB1B5E36BCBull,
+                };
+
+                NativeProgram program{};
+                program.nativeCount = static_cast<std::uint32_t>(slots.size());
+                program.nativeEntrypoints = reinterpret_cast<Native::NativeHandler*>(slots.data());
+                init(&program);
+
+                for (std::size_t i = 0; i < slots.size(); ++i)
+                    handlers[i] = reinterpret_cast<Native::NativeHandler>(static_cast<std::uintptr_t>(slots[i]));
+                return handlers[0] && handlers[1] && handlers[2] && handlers[3] && handlers[4];
+            }
+
+            inline bool ConfigureNetworkedSpawn(Vehicle vehicle) noexcept
+            {
+                if (vehicle == 0)
+                {
+                    TUTONES_LOG_ERROR("vehicle.spawn", "Cannot configure persistence for a null vehicle handle");
+                    return false;
+                }
+
+                if (!ResolveSpawnPostHandlers())
+                {
+                    TUTONES_LOG_ERROR("vehicle.spawn", "Could not resolve the Enhanced network-persistence native handlers");
+                    return false;
+                }
+
+                // Keep Tutones-created vehicles owned by the script while the
+                // player enters them. Without this, GTA can treat the freshly
+                // created entity as disposable during the network handoff.
+                {
+                    Native::CallContext context;
+                    if (!context.PushArg(vehicle)
+                        || !context.PushArg(std::int32_t{1})
+                        || !context.PushArg(std::int32_t{1}))
+                    {
+                        TUTONES_LOG_ERROR("vehicle.spawn", "Failed to prepare SET_ENTITY_AS_MISSION_ENTITY arguments");
+                        return false;
+                    }
+                    SpawnPostHandlers()[SetEntityAsMissionEntity](&context);
+                }
+
+                {
+                    Native::CallContext context;
+                    if (!context.PushArg(vehicle)
+                        || !context.PushArg("MPBitset")
+                        || !context.PushArg(std::int32_t{0}))
+                    {
+                        TUTONES_LOG_ERROR("vehicle.spawn", "Failed to prepare MPBitset persistence arguments");
+                        return false;
+                    }
+                    SpawnPostHandlers()[DecorSetInt](&context);
+                }
+
+                // A freshly created network entity can briefly exist before its
+                // net-object ID is visible to VEH_TO_NET. Retry the lookup instead
+                // of accepting a disposable vehicle after one transient miss.
+                constexpr int NetworkIdAcquireAttempts = 4;
+                int networkId{};
+                for (int attempt = 0; attempt < NetworkIdAcquireAttempts && networkId <= 0; ++attempt)
+                {
+                    Native::CallContext context;
+                    if (!context.PushArg(vehicle))
+                    {
+                        TUTONES_LOG_ERROR("vehicle.spawn", "Failed to prepare VEH_TO_NET arguments");
+                        return false;
+                    }
+
+                    SpawnPostHandlers()[VehToNet](&context);
+                    networkId = context.GetReturnValue<int>();
+                }
+
+                if (networkId <= 0)
+                {
+                    TUTONES_LOG_ERROR("vehicle.spawn", "VEH_TO_NET returned no network ID after persistence retries");
+                    return false;
+                }
+
+                {
+                    Native::CallContext context;
+                    if (!context.PushArg(networkId) || !context.PushArg(std::int32_t{1}))
+                    {
+                        TUTONES_LOG_ERROR("vehicle.spawn", "Failed to prepare SET_NETWORK_ID_EXISTS_ON_ALL_MACHINES arguments");
+                        return false;
+                    }
+                    SpawnPostHandlers()[SetNetworkIdExistsOnAllMachines](&context);
+                }
+
+                // Permit ownership migration instead of leaving the vehicle tied
+                // to the creator's initial network owner. This prevents normal
+                // session ownership changes from cleaning up the spawned car.
+                {
+                    Native::CallContext context;
+                    if (!context.PushArg(networkId) || !context.PushArg(std::int32_t{1}))
+                    {
+                        TUTONES_LOG_ERROR("vehicle.spawn", "Failed to prepare SET_NETWORK_ID_CAN_MIGRATE arguments");
+                        return false;
+                    }
+                    SpawnPostHandlers()[SetNetworkIdCanMigrate](&context);
+                }
+
+                return true;
+            }
+
+            enum PlateHandlerIndex : std::size_t
+            {
+                GetNumberPlateText,
+                SetNumberPlateText,
+                GetNumberPlateTextIndex,
+                SetNumberPlateTextIndex,
+                PlateHandlerCount,
+            };
+
+            inline std::array<Native::NativeHandler, PlateHandlerCount>& PlateHandlers() noexcept
+            {
+                static std::array<Native::NativeHandler, PlateHandlerCount> handlers{};
+                return handlers;
+            }
+
+            inline bool ResolvePlateHandlers() noexcept
+            {
+                auto& handlers = PlateHandlers();
+                if (handlers[0] && handlers[1] && handlers[2] && handlers[3])
+                    return true;
+                if (!Native::NativeRegistry::Get().CanInvokeOnCurrentThread())
+                    return false;
+
+                const auto init = GamePointers::Get().InitNativeTables();
+                if (!init)
+                    return false;
+
+                // GTA V Enhanced mappings verified against YimMenuV2's current enhanced crossmap.
+                std::array<std::uint64_t, PlateHandlerCount> slots{
+                    0xCA7159F2C5FF745Aull, // GET_VEHICLE_NUMBER_PLATE_TEXT
+                    0x3FEAE59CDE6D3946ull, // SET_VEHICLE_NUMBER_PLATE_TEXT
+                    0x4F06416A18248EA0ull, // GET_VEHICLE_NUMBER_PLATE_TEXT_INDEX
+                    0x05D3F682DDA06C20ull, // SET_VEHICLE_NUMBER_PLATE_TEXT_INDEX
+                };
+
+                NativeProgram program{};
+                program.nativeCount = static_cast<std::uint32_t>(slots.size());
+                program.nativeEntrypoints = reinterpret_cast<Native::NativeHandler*>(slots.data());
+                init(&program);
+
+                for (std::size_t i = 0; i < slots.size(); ++i)
+                    handlers[i] = reinterpret_cast<Native::NativeHandler>(static_cast<std::uintptr_t>(slots[i]));
+                return handlers[0] && handlers[1] && handlers[2] && handlers[3];
+            }
+
+            inline bool ModelDimensions(Hash model, Vector3& minimum, Vector3& maximum) noexcept
+            {
+                if (!ResolveSpawnerHandlers())
+                    return false;
+                Native::CallContext context;
+                if (!context.PushArg(model) || !context.PushArg(&minimum) || !context.PushArg(&maximum))
+                    return false;
+                SpawnerHandlers()[GetModelDimensions](&context);
+                context.FixVectors();
+                return std::isfinite(minimum.x) && std::isfinite(minimum.y) && std::isfinite(minimum.z)
+                    && std::isfinite(maximum.x) && std::isfinite(maximum.y) && std::isfinite(maximum.z);
+            }
+
+            inline std::optional<Vector3> OffsetFromEntity(Entity entity, float x, float y, float z) noexcept
+            {
+                if (entity == 0 || !ResolveSpawnerHandlers())
+                    return std::nullopt;
+                Native::CallContext context;
+                if (!context.PushArg(entity) || !context.PushArg(x) || !context.PushArg(y) || !context.PushArg(z))
+                    return std::nullopt;
+                SpawnerHandlers()[GetOffsetFromEntityInWorldCoords](&context);
+                context.FixVectors();
+                const auto result = context.GetReturnValue<Vector3>();
+                if (!std::isfinite(result.x) || !std::isfinite(result.y) || !std::isfinite(result.z))
+                    return std::nullopt;
+                return result;
+            }
+        }
+
+        [[nodiscard]] inline std::optional<float> GetEntityHeading(Entity entity) noexcept
+        {
+            return Native::NativeInvoker::Invoke<float>(Native::NativeId::GetEntityHeading, entity);
+        }
+
+        [[nodiscard]] inline std::optional<Vector3> GetEntityCoords(Entity entity, bool alive = false) noexcept
+        {
+            return Native::NativeInvoker::Invoke<Vector3>(
+                Native::NativeId::GetEntityCoords,
+                entity,
+                static_cast<std::int32_t>(alive));
+        }
+
+        [[nodiscard]] inline std::optional<Vehicle> GetVehiclePedIsUsing(Ped ped) noexcept
+        {
+            return Native::NativeInvoker::Invoke<Vehicle>(Native::NativeId::GetVehiclePedIsUsing, ped);
+        }
+
+        [[nodiscard]] inline std::optional<bool> IsModelAVehicle(Hash model) noexcept
+        {
+            const auto result = Native::NativeInvoker::Invoke<std::int32_t>(Native::NativeId::IsModelAVehicle, model);
+            return result ? std::optional<bool>(*result != 0) : std::nullopt;
+        }
+
+        [[nodiscard]] inline std::optional<Vehicle> CreateVehicle(
+            Hash model,
+            float x,
+            float y,
+            float z,
+            float heading,
+            bool isNetwork = true,
+            bool netMissionEntity = false,
+            bool p7 = false) noexcept
+        {
+            // Match YimMenuV2's model-relative placement. The caller coordinates
+            // remain a fallback when the dimension/offset helpers are unavailable.
+            float spawnX = x;
+            float spawnY = y;
+            float spawnZ = z;
+
+            const auto ped = PlayerNatives::PlayerPedId();
+            if (ped && *ped != 0)
+            {
+                Vector3 minimum{};
+                Vector3 maximum{};
+                if (Detail::ModelDimensions(model, minimum, maximum))
+                {
+                    const float length = maximum.y - minimum.y;
+                    if (std::isfinite(length) && length > 0.25f)
+                    {
+                        const auto offset = Detail::OffsetFromEntity(*ped, 0.0f, length, 0.0f);
+                        if (offset)
+                        {
+                            spawnX = offset->x;
+                            spawnY = offset->y;
+                            spawnZ = offset->z;
+                        }
+                    }
+                }
+            }
+
+            // Network vehicles are created as mission entities immediately. Waiting
+            // until after CREATE_VEHICLE leaves a cleanup window where GTA can mark
+            // the new entity disposable before Tutones finishes network registration.
+            const bool createAsMissionEntity = isNetwork || netMissionEntity;
+            auto created = Native::NativeInvoker::Invoke<Vehicle>(
+                Native::NativeId::CreateVehicle,
+                model,
+                spawnX,
+                spawnY,
+                spawnZ,
+                heading,
+                static_cast<std::int32_t>(isNetwork),
+                static_cast<std::int32_t>(createAsMissionEntity),
+                static_cast<std::int32_t>(p7));
+
+            if (!created || *created == 0)
+                return created;
+
+            // YimMenuV2 marks spawned network vehicles with MPBitset and broadcasts
+            // their network ID to all machines immediately after CREATE_VEHICLE.
+            // Tutones additionally keeps the entity mission-owned and migration-safe
+            // so GTA does not clean it up during the enter/ownership handoff.
+            if (isNetwork && !Detail::ConfigureNetworkedSpawn(*created))
+            {
+                TUTONES_LOG_ERROR("vehicle.spawn", "Network vehicle persistence setup failed; rejecting the spawn instead of reporting a disposable vehicle as ready");
+                return std::nullopt;
+            }
+
+            // Put the new vehicle on the ground before optional enter/max handling.
+            static_cast<void>(Natives::SetVehicleOnGroundProperly(*created, 0.0f));
+            return created;
+        }
+
+        inline bool SetPedIntoVehicle(Ped ped, Vehicle vehicle, int seatIndex = -1) noexcept
+        {
+            return Native::NativeInvoker::InvokeVoid(
+                Native::NativeId::SetPedIntoVehicle,
+                ped,
+                vehicle,
+                seatIndex);
+        }
+
+        [[nodiscard]] inline std::optional<int> GetVehicleClassFromName(Hash model) noexcept
+        {
+            return Native::NativeInvoker::Invoke<int>(Native::NativeId::GetVehicleClassFromName, model);
+        }
+
+        [[nodiscard]] inline std::optional<const char*> GetDisplayNameFromVehicleModel(Hash model) noexcept
+        {
+            return Native::NativeInvoker::Invoke<const char*>(Native::NativeId::GetDisplayNameFromVehicleModel, model);
+        }
+
+        [[nodiscard]] inline std::optional<const char*> GetMakeNameFromVehicleModel(Hash model) noexcept
+        {
+            return Native::NativeInvoker::Invoke<const char*>(Native::NativeId::GetMakeNameFromVehicleModel, model);
+        }
+
+        [[nodiscard]] inline std::optional<Vehicle> GetClosestVehicle(
+            float x, float y, float z, float radius, Hash model = 0, int flags = 70) noexcept
+        {
+            return Native::NativeInvoker::Invoke<Vehicle>(
+                Native::NativeId::GetClosestVehicle, x, y, z, radius, model, flags);
+        }
+
+        [[nodiscard]] inline std::optional<const char*> GetModTextLabel(Vehicle vehicle, int modType, int modIndex) noexcept
+        {
+            return Native::NativeInvoker::Invoke<const char*>(Native::NativeId::GetModTextLabel, vehicle, modType, modIndex);
+        }
+
+        [[nodiscard]] inline std::optional<const char*> GetLabelText(const char* label) noexcept
+        {
+            return Native::NativeInvoker::Invoke<const char*>(Native::NativeId::GetLabelText, label);
+        }
+
+        inline bool GetVehicleTyreSmokeColor(Vehicle vehicle, int& red, int& green, int& blue) noexcept
+        {
+            return Native::NativeInvoker::InvokeVoid(Native::NativeId::GetVehicleTyreSmokeColor, vehicle, &red, &green, &blue);
+        }
+
+        inline bool SetVehicleTyreSmokeColor(Vehicle vehicle, int red, int green, int blue) noexcept
+        {
+            return Native::NativeInvoker::InvokeVoid(Native::NativeId::SetVehicleTyreSmokeColor, vehicle, red, green, blue);
+        }
+
+        [[nodiscard]] inline std::optional<int> GetVehicleXenonLightColor(Vehicle vehicle) noexcept
+        {
+            return Native::NativeInvoker::Invoke<int>(Native::NativeId::GetVehicleXenonLightColor, vehicle);
+        }
+
+        inline bool SetVehicleXenonLightColor(Vehicle vehicle, int colorIndex) noexcept
+        {
+            return Native::NativeInvoker::InvokeVoid(Native::NativeId::SetVehicleXenonLightColor, vehicle, colorIndex);
+        }
+
+        [[nodiscard]] inline std::optional<bool> GetVehicleNeonEnabled(Vehicle vehicle, int index) noexcept
+        {
+            const auto result = Native::NativeInvoker::Invoke<std::int32_t>(Native::NativeId::GetVehicleNeonEnabled, vehicle, index);
+            return result ? std::optional<bool>(*result != 0) : std::nullopt;
+        }
+
+        inline bool SetVehicleNeonEnabled(Vehicle vehicle, int index, bool enabled) noexcept
+        {
+            return Native::NativeInvoker::InvokeVoid(
+                Native::NativeId::SetVehicleNeonEnabled, vehicle, index, static_cast<std::int32_t>(enabled));
+        }
+
+        inline bool GetVehicleNeonColour(Vehicle vehicle, int& red, int& green, int& blue) noexcept
+        {
+            return Native::NativeInvoker::InvokeVoid(Native::NativeId::GetVehicleNeonColour, vehicle, &red, &green, &blue);
+        }
+
+        inline bool SetVehicleNeonColour(Vehicle vehicle, int red, int green, int blue) noexcept
+        {
+            return Native::NativeInvoker::InvokeVoid(Native::NativeId::SetVehicleNeonColour, vehicle, red, green, blue);
+        }
+
+        [[nodiscard]] inline std::optional<bool> GetVehicleTyresCanBurst(Vehicle vehicle) noexcept
+        {
+            const auto result = Native::NativeInvoker::Invoke<std::int32_t>(Native::NativeId::GetVehicleTyresCanBurst, vehicle);
+            return result ? std::optional<bool>(*result != 0) : std::nullopt;
+        }
+
+        inline bool SetVehicleTyresCanBurst(Vehicle vehicle, bool canBurst) noexcept
+        {
+            return Native::NativeInvoker::InvokeVoid(
+                Native::NativeId::SetVehicleTyresCanBurst, vehicle, static_cast<std::int32_t>(canBurst));
+        }
+
+        [[nodiscard]] inline std::optional<bool> GetDriftTyresSet(Vehicle vehicle) noexcept
+        {
+            const auto result = Native::NativeInvoker::Invoke<std::int32_t>(Native::NativeId::GetDriftTyresSet, vehicle);
+            return result ? std::optional<bool>(*result != 0) : std::nullopt;
+        }
+
+        inline bool SetDriftTyres(Vehicle vehicle, bool enabled) noexcept
+        {
+            return Native::NativeInvoker::InvokeVoid(
+                Native::NativeId::SetDriftTyres, vehicle, static_cast<std::int32_t>(enabled));
+        }
+
+        [[nodiscard]] inline std::optional<std::string> GetVehicleNumberPlateText(Vehicle vehicle) noexcept
+        {
+            if (vehicle == 0 || !Detail::ResolvePlateHandlers())
+                return std::nullopt;
+
+            Native::CallContext context;
+            if (!context.PushArg(vehicle))
+                return std::nullopt;
+            Detail::PlateHandlers()[Detail::GetNumberPlateText](&context);
+
+            const char* text = context.GetReturnValue<const char*>();
+            if (!text)
+                return std::nullopt;
+
+            std::string result(text);
+            if (result.size() > 8)
+                result.resize(8);
+            return result;
+        }
+
+        inline bool SetVehicleNumberPlateText(Vehicle vehicle, std::string_view text) noexcept
+        {
+            if (vehicle == 0 || !Detail::ResolvePlateHandlers())
+                return false;
+
+            char plate[9]{};
+            const std::size_t length = text.size() < 8 ? text.size() : 8;
+            if (length != 0)
+                std::memcpy(plate, text.data(), length);
+
+            Native::CallContext context;
+            if (!context.PushArg(vehicle) || !context.PushArg(plate))
+                return false;
+            Detail::PlateHandlers()[Detail::SetNumberPlateText](&context);
+            return true;
+        }
+
+        [[nodiscard]] inline std::optional<int> GetVehicleNumberPlateTextIndex(Vehicle vehicle) noexcept
+        {
+            if (vehicle == 0 || !Detail::ResolvePlateHandlers())
+                return std::nullopt;
+
+            Native::CallContext context;
+            if (!context.PushArg(vehicle))
+                return std::nullopt;
+            Detail::PlateHandlers()[Detail::GetNumberPlateTextIndex](&context);
+            return context.GetReturnValue<int>();
+        }
+
+        inline bool SetVehicleNumberPlateTextIndex(Vehicle vehicle, int index) noexcept
+        {
+            if (vehicle == 0 || index < 0 || index > 12 || !Detail::ResolvePlateHandlers())
+                return false;
+
+            Native::CallContext context;
+            if (!context.PushArg(vehicle) || !context.PushArg(index))
+                return false;
+            Detail::PlateHandlers()[Detail::SetNumberPlateTextIndex](&context);
+            return true;
+        }
+    }
+}
