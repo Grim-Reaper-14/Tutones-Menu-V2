@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <filesystem>
 #include <mutex>
 #include <vector>
 
@@ -15,6 +16,20 @@ namespace TutonesV2::Render
     class Renderer final
     {
     public:
+        struct TextureHandle final
+        {
+            Microsoft::WRL::ComPtr<ID3D12Resource> Resource{};
+            std::uint64_t TextureId{};
+            std::uint32_t Width{};
+            std::uint32_t Height{};
+            UINT DescriptorIndex{UINT_MAX};
+
+            [[nodiscard]] bool Valid() const noexcept
+            {
+                return Resource && TextureId != 0 && DescriptorIndex != UINT_MAX;
+            }
+        };
+
         static Renderer& Get() noexcept;
 
         bool Initialize() noexcept;
@@ -26,12 +41,22 @@ namespace TutonesV2::Render
         void OnBeforeResize(IDXGISwapChain* swapChain) noexcept;
         LRESULT HandleWindowMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam) noexcept;
 
+        bool LoadTextureFile(const std::filesystem::path& path, TextureHandle& out) noexcept;
+        void ReleaseTexture(TextureHandle& texture) noexcept;
+
     private:
         struct FrameContext final
         {
             Microsoft::WRL::ComPtr<ID3D12CommandAllocator> CommandAllocator;
             Microsoft::WRL::ComPtr<ID3D12Resource> BackBuffer;
             D3D12_CPU_DESCRIPTOR_HANDLE Rtv{};
+            std::uint64_t FenceValue{};
+        };
+
+        struct RetiredTexture final
+        {
+            Microsoft::WRL::ComPtr<ID3D12Resource> Resource{};
+            UINT DescriptorIndex{UINT_MAX};
             std::uint64_t FenceValue{};
         };
 
@@ -42,6 +67,7 @@ namespace TutonesV2::Render
         void DetachInputHook() noexcept;
         void RenderMenuFrame() noexcept;
         void WaitForOverlayIdle() noexcept;
+        void CollectTextureGarbage() noexcept;
         void ResetSwapChainState() noexcept;
         void ReleasePrimarySelection() noexcept;
 
@@ -67,6 +93,9 @@ namespace TutonesV2::Render
         HANDLE m_FenceEvent{};
         DXGI_FORMAT m_BackBufferFormat{DXGI_FORMAT_UNKNOWN};
         UINT m_RtvDescriptorSize{};
+        UINT m_SrvDescriptorSize{};
+        std::vector<bool> m_SrvSlotsUsed;
+        std::vector<RetiredTexture> m_RetiredTextures;
         std::uint64_t m_NextFenceValue{};
         bool m_ImGuiReady{};
     };

@@ -89,6 +89,9 @@ target_link_libraries(Tutones-Menu-V2 PRIVATE
     d3d12
     dxgi
     user32
+    windowscodecs
+    ole32
+    winhttp
 )
 
 set_target_properties(Tutones-Menu-V2 PROPERTIES
