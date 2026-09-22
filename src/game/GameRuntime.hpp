@@ -30,6 +30,7 @@ namespace TutonesV2::Game
         [[nodiscard]] bool NativeRuntimeAvailable() const noexcept;
         [[nodiscard]] bool NativeReady() const noexcept;
         [[nodiscard]] bool NativeCanaryPassed() const noexcept;
+        [[nodiscard]] bool IsOnGameThread() const noexcept;
         [[nodiscard]] NativeRuntimeState NativeState() const noexcept;
         [[nodiscard]] static const char* NativeStateName(NativeRuntimeState state) noexcept;
 
