@@ -41,14 +41,28 @@ namespace TutonesV2::Features::Vehicle
     VehicleService& VehicleService::Get() noexcept { static VehicleService s; return s; }
 
     bool VehicleService::Initialize() noexcept {
-        m_Busy=false;m_LoopQueued=false;m_PendingModel=0;m_Attempts=0;
+        m_Busy=false;m_LoopQueued=false;m_FeatureLoopQueued=false;
+        m_VehicleGodMode=false;m_KeepVehicleClean=false;m_HornBoost=false;
+        m_PendingModel=0;m_Attempts=0;m_LastGodVehicle=0;
+        m_BoostSpeed=10.0f;m_WasHornPressed=false;
         {std::scoped_lock lock(m_Mutex);m_Snapshot={};}
         m_Ready=true; return true;
     }
     void VehicleService::Shutdown() noexcept {
-        m_Ready=false;m_Busy=false;m_LoopQueued=false;m_PendingModel=0;
+        if(!m_Ready.exchange(false))return;
+        m_Busy=false;m_LoopQueued=false;m_FeatureLoopQueued=false;m_PendingModel=0;
+        m_VehicleGodMode=false;m_KeepVehicleClean=false;m_HornBoost=false;
+        if(Game::GameRuntime::Get().NativeReady()){
+            static_cast<void>(Game::GameRuntime::Get().Enqueue([this]{
+                RestoreGodVehicle();
+                ResetHornBoost();
+            }));
+        }
     }
     bool VehicleService::IsReady() const noexcept { return m_Ready.load(); }
+    bool VehicleService::VehicleGodMode() const noexcept { return m_VehicleGodMode.load(); }
+    bool VehicleService::KeepVehicleClean() const noexcept { return m_KeepVehicleClean.load(); }
+    bool VehicleService::HornBoost() const noexcept { return m_HornBoost.load(); }
     VehicleSnapshot VehicleService::Snapshot() const { std::scoped_lock lock(m_Mutex); auto s=m_Snapshot; s.busy=m_Busy.load(); return s; }
 
     std::uint32_t VehicleService::Joaat(const std::string& value) noexcept {
@@ -135,6 +149,109 @@ namespace TutonesV2::Features::Vehicle
         Finish(persisted,veh,persisted?"Vehicle spawned":"Vehicle spawned, but network persistence setup failed");
     }
 
+    bool VehicleService::HasFeatureLoopWork() const noexcept {
+        return m_VehicleGodMode.load(std::memory_order_acquire)
+            || m_KeepVehicleClean.load(std::memory_order_acquire)
+            || m_HornBoost.load(std::memory_order_acquire);
+    }
+
+    void VehicleService::EnsureFeatureLoop() noexcept {
+        if(!IsReady()||!Game::GameRuntime::Get().NativeReady()||!HasFeatureLoopWork())return;
+        bool expected=false;
+        if(!m_FeatureLoopQueued.compare_exchange_strong(expected,true,std::memory_order_acq_rel))return;
+        if(!Game::GameRuntime::Get().Enqueue([this]{FeatureTick();}))
+            m_FeatureLoopQueued.store(false,std::memory_order_release);
+    }
+
+    void VehicleService::RestoreGodVehicle() noexcept {
+        if(!m_LastGodVehicle)return;
+        const auto exists=NativeInvoker::Invoke<std::int32_t>(NativeId::DoesEntityExist,m_LastGodVehicle);
+        if(exists&&*exists)
+            static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetEntityInvincible,m_LastGodVehicle,std::int32_t{0},std::int32_t{0}));
+        m_LastGodVehicle=0;
+    }
+
+    void VehicleService::ResetHornBoost() noexcept {
+        m_BoostSpeed=10.0f;
+        m_WasHornPressed=false;
+    }
+
+    void VehicleService::FeatureTick() noexcept {
+        if(!IsReady()||!HasFeatureLoopWork()){
+            RestoreGodVehicle();
+            ResetHornBoost();
+            m_FeatureLoopQueued.store(false,std::memory_order_release);
+            return;
+        }
+
+        const int vehicle=CurrentVehicle();
+
+        if(m_VehicleGodMode.load(std::memory_order_acquire)){
+            if(vehicle&&vehicle!=m_LastGodVehicle){
+                RestoreGodVehicle();
+                m_LastGodVehicle=vehicle;
+            }
+            if(vehicle)
+                static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetEntityInvincible,vehicle,std::int32_t{1},std::int32_t{0}));
+        }else{
+            RestoreGodVehicle();
+        }
+
+        if(m_KeepVehicleClean.load(std::memory_order_acquire)&&vehicle)
+            static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetVehicleDirtLevel,vehicle,0.0f));
+
+        if(m_HornBoost.load(std::memory_order_acquire)&&vehicle){
+            const auto pressed=NativeInvoker::Invoke<std::int32_t>(NativeId::IsControlPressed,0,86);
+            if(pressed&&*pressed){
+                if(!m_WasHornPressed){
+                    const auto speed=NativeInvoker::Invoke<float>(NativeId::GetEntitySpeed,vehicle);
+                    m_BoostSpeed=std::max(10.0f,speed.value_or(10.0f));
+                }
+                m_BoostSpeed=std::min(200.0f,m_BoostSpeed+0.3f);
+                const auto position=NativeInvoker::Invoke<Game::Native::NativeVector3>(NativeId::GetEntityCoords,vehicle,std::int32_t{0});
+                const auto target=NativeInvoker::Invoke<Game::Native::NativeVector3>(
+                    NativeId::GetOffsetFromEntityInWorldCoords,vehicle,0.0f,m_BoostSpeed,0.0f);
+                if(position&&target){
+                    static_cast<void>(NativeInvoker::InvokeVoid(
+                        NativeId::SetEntityVelocity,
+                        vehicle,
+                        target->x-position->x,
+                        target->y-position->y,
+                        target->z-position->z));
+                }
+                m_WasHornPressed=true;
+            }else{
+                ResetHornBoost();
+            }
+        }else{
+            ResetHornBoost();
+        }
+
+        if(!Game::GameRuntime::Get().Enqueue([this]{FeatureTick();}))
+            m_FeatureLoopQueued.store(false,std::memory_order_release);
+    }
+
+    bool VehicleService::SetVehicleGodMode(bool enabled) noexcept {
+        if(!IsReady()||!Game::GameRuntime::Get().NativeReady())return false;
+        m_VehicleGodMode.store(enabled,std::memory_order_release);
+        if(enabled){EnsureFeatureLoop();return true;}
+        return Game::GameRuntime::Get().Enqueue([this]{RestoreGodVehicle();});
+    }
+
+    bool VehicleService::SetKeepVehicleClean(bool enabled) noexcept {
+        if(!IsReady()||!Game::GameRuntime::Get().NativeReady())return false;
+        m_KeepVehicleClean.store(enabled,std::memory_order_release);
+        if(enabled)EnsureFeatureLoop();
+        return true;
+    }
+
+    bool VehicleService::SetHornBoost(bool enabled) noexcept {
+        if(!IsReady()||!Game::GameRuntime::Get().NativeReady())return false;
+        m_HornBoost.store(enabled,std::memory_order_release);
+        if(enabled)EnsureFeatureLoop();else ResetHornBoost();
+        return true;
+    }
+
     void VehicleService::Finish(bool success,int vehicle,std::string message) noexcept {
         m_Busy=false;m_PendingModel=0;
         std::scoped_lock lock(m_Mutex);
@@ -150,5 +267,16 @@ namespace TutonesV2::Features::Vehicle
     bool VehicleService::QueueCleanCurrent() noexcept {
         if(!IsReady()||!Game::GameRuntime::Get().NativeReady())return false;
         return Game::GameRuntime::Get().Enqueue([this]{const int v=CurrentVehicle();if(!v){Finish(false,0,"Enter a vehicle first");return;}const bool ok=NativeInvoker::InvokeVoid(NativeId::SetVehicleDirtLevel,v,0.0f);Finish(ok,v,ok?"Vehicle cleaned":"Vehicle clean failed");});
+    }
+
+    bool VehicleService::QueueSetUpright() noexcept {
+        if(!IsReady()||!Game::GameRuntime::Get().NativeReady())return false;
+        return Game::GameRuntime::Get().Enqueue([this]{
+            const int v=CurrentVehicle();
+            if(!v){Finish(false,0,"Enter a vehicle first");return;}
+            const auto ok=NativeInvoker::Invoke<std::int32_t>(NativeId::SetVehicleOnGroundProperly,v,5.0f);
+            const bool success=ok&&*ok!=0;
+            Finish(success,v,success?"Vehicle set upright":"Set upright failed");
+        });
     }
 }
