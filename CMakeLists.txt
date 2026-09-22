@@ -60,6 +60,7 @@ add_library(Tutones-Menu-V2 SHARED
     src/features/weapon/WeaponService.cpp
     src/features/vehicle/VehicleService.cpp
     src/features/world/TeleportService.cpp
+    src/features/world/WorldService.cpp
     src/hooking/HookManager.cpp
     src/render/Renderer.cpp
     src/ui/Menu.cpp
