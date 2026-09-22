@@ -1659,6 +1659,9 @@ namespace TutonesV2::UI
 
             if (ImGui::Button("Apply Bunker V1 Profile", ImVec2(-1.0f, 30.0f)))
                 static_cast<void>(parity.QueueBunkerProfile(bunkerProfile));
+
+            if (ImGui::Button("Bunker Instant Sell", ImVec2(-1.0f, 28.0f)))
+                static_cast<void>(parity.QueueBunkerInstantSell());
             ImGui::EndDisabled();
 
             ImGui::SeparatorText("Special Cargo");
@@ -1748,6 +1751,16 @@ namespace TutonesV2::UI
 
             if (ImGui::Button("Enable Unique Cargo"))
                 static_cast<void>(parity.QueueSpecialCargoUniqueItem(uniqueItem));
+
+            if (ImGui::Button("Instant Special Cargo Buy"))
+                static_cast<void>(parity.QueueSpecialCargoInstantBuy());
+            ImGui::SameLine();
+            if (ImGui::Button("Instant Special Cargo Sell"))
+                static_cast<void>(parity.QueueSpecialCargoInstantSell());
+
+            ImGui::SeparatorText("Acid Lab");
+            if (ImGui::Button("Fill Acid Lab Stock 160/160", ImVec2(-1.0f, 30.0f)))
+                static_cast<void>(parity.QueueAcidLabFullStock());
 
             ImGui::EndDisabled();
 
@@ -1917,11 +1930,24 @@ namespace TutonesV2::UI
             const auto parityState = parity.Snapshot();
 
             ImGui::SeparatorText("V1 Recovery Actions");
+            static int luckyWheelPrize{};
+            luckyWheelPrize = std::clamp(luckyWheelPrize, 0, 19);
+
             ImGui::BeginDisabled(parityState.pending);
             if (ImGui::Button("Trigger Good Behavior Bonus ($2,000)", ImVec2(-1.0f, 30.0f)))
                 static_cast<void>(parity.QueueGoodBehaviorBonus());
+
+            if (ImGui::Button("Apply Lucky Wheel Spin Globals"))
+                static_cast<void>(parity.QueueLuckyWheelGlobals());
+
+            ImGui::SetNextItemWidth(150.0f);
+            ImGui::InputInt("Lucky Wheel Prize (0-19)", &luckyWheelPrize, 1, 1);
+            luckyWheelPrize = std::clamp(luckyWheelPrize, 0, 19);
+            if (ImGui::Button("Set Lucky Wheel Prize", ImVec2(-1.0f, 28.0f)))
+                static_cast<void>(parity.QueueLuckyWheelPrize(luckyWheelPrize));
             ImGui::EndDisabled();
-            ImGui::TextDisabled("V1 recovery globals: %s", parityState.message.c_str());
+
+            ImGui::TextDisabled("V1 recovery globals/locals: %s", parityState.message.c_str());
 
             PlannedSection(
                 "Businesses",
