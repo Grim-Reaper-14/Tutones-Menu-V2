@@ -1,7 +1,9 @@
 #pragma once
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -36,6 +38,7 @@ namespace TutonesV2::Features::Vehicle
         void EnsureCatalog() noexcept;
 
         bool QueueSpawn(std::string modelName, bool enterVehicle, bool networked, bool maxed = false) noexcept;
+        bool QueueCloneCurrent(bool enterVehicle, bool networked) noexcept;
         bool QueueRepairCurrent() noexcept;
         bool QueueCleanCurrent() noexcept;
         bool QueueSetUpright() noexcept;
@@ -49,11 +52,36 @@ namespace TutonesV2::Features::Vehicle
         [[nodiscard]] bool HornBoost() const noexcept;
 
     private:
+        struct VehiclePreset final
+        {
+            std::uint32_t model{};
+            int primary{};
+            int secondary{};
+            int pearlescent{};
+            int wheelColor{};
+            bool primaryCustom{};
+            bool secondaryCustom{};
+            std::array<int, 3> customPrimary{};
+            std::array<int, 3> customSecondary{};
+            int wheelType{};
+            std::array<int, 50> mods{};
+            std::array<bool, 50> variations{};
+            std::array<bool, 50> toggles{};
+            std::array<int, 3> tireSmoke{{255,255,255}};
+            int xenonColor{-1};
+            std::array<bool, 4> neonEnabled{};
+            std::array<int, 3> neonColor{{222,222,255}};
+            bool tyresCanBurst{true};
+            bool driftTyres{};
+        };
+
         VehicleService() = default;
         bool EnsureLoop() noexcept;
         void SpawnTick() noexcept;
         void CatalogTick() noexcept;
         bool MaxVehicle(int vehicle) noexcept;
+        bool CapturePreset(int vehicle, VehiclePreset& out) noexcept;
+        bool ApplyPreset(int vehicle, const VehiclePreset& preset) noexcept;
         void EnsureFeatureLoop() noexcept;
         void FeatureTick() noexcept;
         [[nodiscard]] bool HasFeatureLoopWork() const noexcept;
@@ -74,6 +102,7 @@ namespace TutonesV2::Features::Vehicle
         bool m_EnterVehicle{};
         bool m_Networked{true};
         bool m_Maxed{};
+        std::optional<VehiclePreset> m_PendingPreset{};
         int m_Attempts{};
         int m_LastGodVehicle{};
         float m_BoostSpeed{10.0f};

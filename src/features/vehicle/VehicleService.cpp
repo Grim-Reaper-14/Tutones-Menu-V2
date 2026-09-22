@@ -4,6 +4,7 @@
 #include "../../game/vehicle/VehicleModels.hpp"
 #include <algorithm>
 #include <cmath>
+#include <string_view>
 #include <utility>
 
 namespace TutonesV2::Features::Vehicle
@@ -44,7 +45,7 @@ namespace TutonesV2::Features::Vehicle
     bool VehicleService::Initialize() noexcept {
         m_Busy=false;m_LoopQueued=false;m_FeatureLoopQueued=false;m_CatalogLoopQueued=false;
         m_VehicleGodMode=false;m_KeepVehicleClean=false;m_HornBoost=false;
-        m_PendingModel=0;m_Attempts=0;m_LastGodVehicle=0;m_Maxed=false;
+        m_PendingModel=0;m_Attempts=0;m_LastGodVehicle=0;m_Maxed=false;m_PendingPreset.reset();
         m_BoostSpeed=10.0f;m_WasHornPressed=false;m_CatalogCursor=0;
         {
             std::scoped_lock lock(m_Mutex);
@@ -56,7 +57,7 @@ namespace TutonesV2::Features::Vehicle
     }
     void VehicleService::Shutdown() noexcept {
         if(!m_Ready.exchange(false))return;
-        m_Busy=false;m_LoopQueued=false;m_FeatureLoopQueued=false;m_CatalogLoopQueued=false;m_PendingModel=0;
+        m_Busy=false;m_LoopQueued=false;m_FeatureLoopQueued=false;m_CatalogLoopQueued=false;m_PendingModel=0;m_PendingPreset.reset();
         m_VehicleGodMode=false;m_KeepVehicleClean=false;m_HornBoost=false;
         if(Game::GameRuntime::Get().NativeReady()){
             static_cast<void>(Game::GameRuntime::Get().Enqueue([this]{
@@ -123,6 +124,47 @@ namespace TutonesV2::Features::Vehicle
         m_Busy=false; return false;
     }
 
+    bool VehicleService::QueueCloneCurrent(bool enterVehicle,bool networked) noexcept {
+        if(!IsReady()||!Game::GameRuntime::Get().NativeReady())return false;
+        bool expected=false;
+        if(!m_Busy.compare_exchange_strong(expected,true))return false;
+        {
+            std::scoped_lock lock(m_Mutex);
+            m_Snapshot.message="Capturing current vehicle...";
+            m_Snapshot.lastSucceeded=false;
+        }
+
+        if(Game::GameRuntime::Get().Enqueue([this,enterVehicle,networked]{
+            const int source=CurrentVehicle();
+            if(!source){Finish(false,0,"Enter a vehicle first");return;}
+
+            VehiclePreset preset{};
+            if(!CapturePreset(source,preset)){Finish(false,0,"Could not capture current vehicle");return;}
+
+            const auto cd=NativeInvoker::Invoke<std::int32_t>(NativeId::IsModelInCdimage,preset.model);
+            const auto valid=NativeInvoker::Invoke<std::int32_t>(NativeId::IsModelValid,preset.model);
+            const auto vehicle=NativeInvoker::Invoke<std::int32_t>(NativeId::IsModelAVehicle,preset.model);
+            if(!cd||!*cd||!valid||!*valid||!vehicle||!*vehicle){Finish(false,0,"Current vehicle model cannot be cloned");return;}
+
+            if(!NativeInvoker::InvokeVoid(NativeId::RequestModel,preset.model)){Finish(false,0,"Clone REQUEST_MODEL failed");return;}
+
+            m_EnterVehicle=enterVehicle;
+            m_Networked=networked;
+            m_Maxed=false;
+            m_Attempts=0;
+            m_PendingPreset=std::move(preset);
+            m_PendingModel=m_PendingPreset->model;
+            {
+                std::scoped_lock lock(m_Mutex);
+                m_Snapshot.message="Streaming current vehicle clone...";
+            }
+            if(!EnsureLoop())Finish(false,0,"Could not schedule clone loader");
+        }))return true;
+
+        m_Busy=false;
+        return false;
+    }
+
     bool VehicleService::EnsureLoop() noexcept {
         bool expected=false;if(!m_LoopQueued.compare_exchange_strong(expected,true))return true;
         if(Game::GameRuntime::Get().Enqueue([this]{SpawnTick();}))return true;
@@ -183,6 +225,120 @@ namespace TutonesV2::Features::Vehicle
             m_CatalogLoopQueued.store(false,std::memory_order_release);
     }
 
+    bool VehicleService::CapturePreset(int vehicle, VehiclePreset& out) noexcept {
+        if(!vehicle)return false;
+
+        const auto model=NativeInvoker::Invoke<std::uint32_t>(NativeId::GetEntityModel,vehicle);
+        if(!model||!*model)return false;
+        out={};
+        out.model=*model;
+
+        static_cast<void>(NativeInvoker::InvokeVoid(NativeId::GetVehicleColours,vehicle,&out.primary,&out.secondary));
+        static_cast<void>(NativeInvoker::InvokeVoid(NativeId::GetVehicleExtraColours,vehicle,&out.pearlescent,&out.wheelColor));
+
+        const auto primaryCustom=NativeInvoker::Invoke<std::int32_t>(NativeId::GetIsVehiclePrimaryColourCustom,vehicle);
+        const auto secondaryCustom=NativeInvoker::Invoke<std::int32_t>(NativeId::GetIsVehicleSecondaryColourCustom,vehicle);
+        out.primaryCustom=primaryCustom&&*primaryCustom!=0;
+        out.secondaryCustom=secondaryCustom&&*secondaryCustom!=0;
+
+        if(out.primaryCustom)
+            static_cast<void>(NativeInvoker::InvokeVoid(
+                NativeId::GetVehicleCustomPrimaryColour,
+                vehicle,&out.customPrimary[0],&out.customPrimary[1],&out.customPrimary[2]));
+        if(out.secondaryCustom)
+            static_cast<void>(NativeInvoker::InvokeVoid(
+                NativeId::GetVehicleCustomSecondaryColour,
+                vehicle,&out.customSecondary[0],&out.customSecondary[1],&out.customSecondary[2]));
+
+        if(const auto wheelType=NativeInvoker::Invoke<std::int32_t>(NativeId::GetVehicleWheelType,vehicle))
+            out.wheelType=*wheelType;
+
+        for(int type=0;type<50;++type){
+            if(const auto mod=NativeInvoker::Invoke<std::int32_t>(NativeId::GetVehicleMod,vehicle,type))
+                out.mods[static_cast<std::size_t>(type)]=*mod;
+            else
+                out.mods[static_cast<std::size_t>(type)]=-1;
+
+            if(const auto variation=NativeInvoker::Invoke<std::int32_t>(NativeId::GetVehicleModVariation,vehicle,type))
+                out.variations[static_cast<std::size_t>(type)]=*variation!=0;
+            if(const auto toggle=NativeInvoker::Invoke<std::int32_t>(NativeId::IsToggleModOn,vehicle,type))
+                out.toggles[static_cast<std::size_t>(type)]=*toggle!=0;
+        }
+
+        static_cast<void>(NativeInvoker::InvokeVoid(
+            NativeId::GetVehicleTyreSmokeColor,
+            vehicle,&out.tireSmoke[0],&out.tireSmoke[1],&out.tireSmoke[2]));
+        if(const auto xenon=NativeInvoker::Invoke<std::int32_t>(NativeId::GetVehicleXenonLightColor,vehicle))
+            out.xenonColor=*xenon;
+        for(int i=0;i<4;++i){
+            if(const auto enabled=NativeInvoker::Invoke<std::int32_t>(NativeId::GetVehicleNeonEnabled,vehicle,i))
+                out.neonEnabled[static_cast<std::size_t>(i)]=*enabled!=0;
+        }
+        static_cast<void>(NativeInvoker::InvokeVoid(
+            NativeId::GetVehicleNeonColour,
+            vehicle,&out.neonColor[0],&out.neonColor[1],&out.neonColor[2]));
+        if(const auto canBurst=NativeInvoker::Invoke<std::int32_t>(NativeId::GetVehicleTyresCanBurst,vehicle))
+            out.tyresCanBurst=*canBurst!=0;
+        if(const auto drift=NativeInvoker::Invoke<std::int32_t>(NativeId::GetDriftTyresSet,vehicle))
+            out.driftTyres=*drift!=0;
+        return true;
+    }
+
+    bool VehicleService::ApplyPreset(int vehicle, const VehiclePreset& preset) noexcept {
+        if(!vehicle)return false;
+        bool ok=NativeInvoker::InvokeVoid(NativeId::SetVehicleModKit,vehicle,0);
+        ok=NativeInvoker::InvokeVoid(NativeId::SetVehicleColours,vehicle,preset.primary,preset.secondary)&&ok;
+        ok=NativeInvoker::InvokeVoid(NativeId::SetVehicleExtraColours,vehicle,preset.pearlescent,preset.wheelColor)&&ok;
+
+        if(preset.primaryCustom)
+            ok=NativeInvoker::InvokeVoid(
+                NativeId::SetVehicleCustomPrimaryColour,
+                vehicle,preset.customPrimary[0],preset.customPrimary[1],preset.customPrimary[2])&&ok;
+        else
+            static_cast<void>(NativeInvoker::InvokeVoid(NativeId::ClearVehicleCustomPrimaryColour,vehicle));
+
+        if(preset.secondaryCustom)
+            ok=NativeInvoker::InvokeVoid(
+                NativeId::SetVehicleCustomSecondaryColour,
+                vehicle,preset.customSecondary[0],preset.customSecondary[1],preset.customSecondary[2])&&ok;
+        else
+            static_cast<void>(NativeInvoker::InvokeVoid(NativeId::ClearVehicleCustomSecondaryColour,vehicle));
+
+        ok=NativeInvoker::InvokeVoid(NativeId::SetVehicleWheelType,vehicle,preset.wheelType)&&ok;
+        for(int type=0;type<50;++type){
+            const auto index=static_cast<std::size_t>(type);
+            if(preset.mods[index]>=0)
+                ok=NativeInvoker::InvokeVoid(
+                    NativeId::SetVehicleMod,
+                    vehicle,type,preset.mods[index],
+                    std::int32_t{preset.variations[index]?1:0})&&ok;
+            else
+                static_cast<void>(NativeInvoker::InvokeVoid(NativeId::RemoveVehicleMod,vehicle,type));
+
+            if(preset.toggles[index])
+                static_cast<void>(NativeInvoker::InvokeVoid(NativeId::ToggleVehicleMod,vehicle,type,std::int32_t{1}));
+        }
+
+        static_cast<void>(NativeInvoker::InvokeVoid(
+            NativeId::SetVehicleTyreSmokeColor,
+            vehicle,preset.tireSmoke[0],preset.tireSmoke[1],preset.tireSmoke[2]));
+        static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetVehicleXenonLightColor,vehicle,preset.xenonColor));
+        for(int i=0;i<4;++i)
+            static_cast<void>(NativeInvoker::InvokeVoid(
+                NativeId::SetVehicleNeonEnabled,
+                vehicle,i,std::int32_t{preset.neonEnabled[static_cast<std::size_t>(i)]?1:0}));
+        static_cast<void>(NativeInvoker::InvokeVoid(
+            NativeId::SetVehicleNeonColour,
+            vehicle,preset.neonColor[0],preset.neonColor[1],preset.neonColor[2]));
+        static_cast<void>(NativeInvoker::InvokeVoid(
+            NativeId::SetVehicleTyresCanBurst,
+            vehicle,std::int32_t{preset.tyresCanBurst?1:0}));
+        static_cast<void>(NativeInvoker::InvokeVoid(
+            NativeId::SetDriftTyres,
+            vehicle,std::int32_t{preset.driftTyres?1:0}));
+        return ok;
+    }
+
     bool VehicleService::MaxVehicle(int vehicle) noexcept {
         if(!vehicle)return false;
         bool ok=NativeInvoker::InvokeVoid(NativeId::SetVehicleModKit,vehicle,0);
@@ -240,11 +396,21 @@ namespace TutonesV2::Features::Vehicle
         else static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetEntityAsMissionEntity,veh,std::int32_t{1},std::int32_t{1}));
 
         static_cast<void>(NativeInvoker::Invoke<std::int32_t>(NativeId::SetVehicleOnGroundProperly,veh,5.0f));
-        if(m_Maxed) static_cast<void>(MaxVehicle(veh));
+        if(m_PendingPreset)
+            static_cast<void>(ApplyPreset(veh,*m_PendingPreset));
+        else if(m_Maxed)
+            static_cast<void>(MaxVehicle(veh));
         if(m_EnterVehicle) static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetPedIntoVehicle,ped,veh,-1));
         static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetModelAsNoLongerNeeded,model));
+        const bool cloned=m_PendingPreset.has_value();
+        m_PendingPreset.reset();
         m_PendingModel=0;m_LoopQueued=false;
-        Finish(persisted,veh,persisted?"Vehicle spawned":"Vehicle spawned, but network persistence setup failed");
+        Finish(
+            persisted,
+            veh,
+            persisted
+                ? (cloned?"Current vehicle cloned":"Vehicle spawned")
+                : "Vehicle spawned, but network persistence setup failed");
     }
 
     bool VehicleService::HasFeatureLoopWork() const noexcept {
@@ -351,7 +517,7 @@ namespace TutonesV2::Features::Vehicle
     }
 
     void VehicleService::Finish(bool success,int vehicle,std::string message) noexcept {
-        m_Busy=false;m_PendingModel=0;
+        m_Busy=false;m_PendingModel=0;m_PendingPreset.reset();
         std::scoped_lock lock(m_Mutex);
         m_Snapshot.lastSucceeded=success;
         if(vehicle)m_Snapshot.lastSpawnedVehicle=vehicle;
