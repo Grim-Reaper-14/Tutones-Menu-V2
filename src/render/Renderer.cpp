@@ -209,6 +209,11 @@ namespace TutonesV2::Render
         return m_Initialized.load();
     }
 
+    std::uint64_t Renderer::TextureGeneration() const noexcept
+    {
+        return m_TextureGeneration.load(std::memory_order_acquire);
+    }
+
     bool Renderer::SelectPrimarySwapChain(IDXGISwapChain* swapChain) noexcept
     {
         if (!swapChain)
@@ -521,6 +526,7 @@ namespace TutonesV2::Render
         }
 
         m_ImGuiReady = true;
+        m_TextureGeneration.fetch_add(1, std::memory_order_acq_rel);
         if (!AttachInputHook())
         {
             ResetSwapChainState();

@@ -43,6 +43,7 @@ namespace TutonesV2::Render
 
         bool LoadTextureFile(const std::filesystem::path& path, TextureHandle& out) noexcept;
         void ReleaseTexture(TextureHandle& texture) noexcept;
+        [[nodiscard]] std::uint64_t TextureGeneration() const noexcept;
 
     private:
         struct FrameContext final
@@ -75,6 +76,7 @@ namespace TutonesV2::Render
         std::atomic_bool m_RenderReady{};
         std::atomic_bool m_ToggleKeyDown{};
         std::atomic_bool m_InputHooked{};
+        std::atomic_uint64_t m_TextureGeneration{};
         std::atomic<IDXGISwapChain*> m_PrimarySwapChain{};
         std::atomic<ID3D12Device*> m_PrimaryDevice{};
         std::atomic<ID3D12CommandQueue*> m_CommandQueue{};
