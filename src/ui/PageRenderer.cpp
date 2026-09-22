@@ -7,6 +7,7 @@
 #include "../features/player/PlayerService.hpp"
 #include "../features/player/PlayerStatsService.hpp"
 #include "../features/player/SelfOnlineService.hpp"
+#include "../features/protection/ProtectionService.hpp"
 #include "../features/online/OnlineStatusService.hpp"
 #include "../features/utility/UtilityService.hpp"
 #include "../features/vehicle/VehicleService.hpp"
@@ -1462,13 +1463,75 @@ namespace TutonesV2::UI
 
         void RenderProtections() noexcept
         {
-            ImGui::SeparatorText("V1 Protections");
-            ImGui::TextWrapped("Network-message and scripted-event protection controls are being moved to the V2 hook manager with explicit pattern/readiness validation.");
-            ImGui::Spacing();
-            ImGui::BulletText("Malformed packet protection");
-            ImGui::BulletText("Known crash filters");
-            ImGui::BulletText("Forced-leave filters");
-            ImGui::BulletText("Network/script event blocking");
+            auto& runtime = Features::Protection::ProtectionRuntime::Get();
+            const auto state = runtime.Snapshot();
+
+            ImGui::SeparatorText("Protection Runtime");
+            ImGui::BulletText("Hook: %s", state.installed ? "ACTIVE" : "OFFLINE");
+            ImGui::TextWrapped("%s", state.status.c_str());
+
+            ImGui::SeparatorText("Packet Safety");
+            bool blockMalformed = state.blockMalformed;
+            bool blockKnownCrashes = state.blockKnownCrashes;
+            bool blockForcedLeave = state.blockForcedLeave;
+            if (ImGui::Checkbox("Block malformed packets", &blockMalformed))
+                runtime.SetBlockMalformed(blockMalformed);
+            if (ImGui::Checkbox("Block known crash payloads", &blockKnownCrashes))
+                runtime.SetBlockKnownCrashes(blockKnownCrashes);
+            if (ImGui::Checkbox("Block forced-leave traffic", &blockForcedLeave))
+                runtime.SetBlockForcedLeave(blockForcedLeave);
+
+            ImGui::SeparatorText("Network Events");
+            bool blockSounds = state.blockSounds;
+            bool blockExplosions = state.blockExplosions;
+            bool blockFire = state.blockFire;
+            bool blockWeaponDamage = state.blockWeaponDamage;
+            bool blockRagdoll = state.blockRagdoll;
+            bool blockClearTasks = state.blockClearTasks;
+            bool blockPtfx = state.blockPtfx;
+
+            if (ImGui::Checkbox("Block sound events", &blockSounds))
+                runtime.SetBlockSounds(blockSounds);
+            if (ImGui::Checkbox("Block explosion events", &blockExplosions))
+                runtime.SetBlockExplosions(blockExplosions);
+            if (ImGui::Checkbox("Block fire events", &blockFire))
+                runtime.SetBlockFire(blockFire);
+            if (ImGui::Checkbox("Block weapon-damage events", &blockWeaponDamage))
+                runtime.SetBlockWeaponDamage(blockWeaponDamage);
+            if (ImGui::Checkbox("Block ragdoll events", &blockRagdoll))
+                runtime.SetBlockRagdoll(blockRagdoll);
+            if (ImGui::Checkbox("Block clear-tasks events", &blockClearTasks))
+                runtime.SetBlockClearTasks(blockClearTasks);
+            if (ImGui::Checkbox("Block particle-FX events", &blockPtfx))
+                runtime.SetBlockPtfx(blockPtfx);
+
+            ImGui::SeparatorText("Script Events");
+            bool blockScriptEvents = state.blockScriptEvents;
+            bool blockMalformedScriptEvents = state.blockMalformedScriptEvents;
+            if (ImGui::Checkbox("Block scripted events", &blockScriptEvents))
+                runtime.SetBlockScriptEvents(blockScriptEvents);
+            if (ImGui::Checkbox("Block malformed scripted events", &blockMalformedScriptEvents))
+                runtime.SetBlockMalformedScriptEvents(blockMalformedScriptEvents);
+
+            ImGui::SeparatorText("Live Counters");
+            ImGui::Text("Packets inspected: %llu", static_cast<unsigned long long>(state.packetsInspected));
+            ImGui::SameLine();
+            ImGui::Text("blocked: %llu", static_cast<unsigned long long>(state.packetsBlocked));
+            ImGui::Text("Events inspected: %llu", static_cast<unsigned long long>(state.eventsInspected));
+            ImGui::SameLine();
+            ImGui::Text("blocked: %llu", static_cast<unsigned long long>(state.eventsBlocked));
+            ImGui::Text(
+                "Forced-leave blocks: %llu | Crash blocks: %llu",
+                static_cast<unsigned long long>(state.forcedLeaveAttemptsBlocked),
+                static_cast<unsigned long long>(state.knownCrashAttemptsBlocked));
+            ImGui::TextDisabled(
+                "Last block: event %d | message %d | peer %u",
+                state.lastBlockedEvent,
+                state.lastBlockedMessageType,
+                state.lastBlockedPeerId);
+
+            if (ImGui::Button("Reset protection counters"))
+                runtime.ResetCounters();
         }
 
         void RenderTools() noexcept

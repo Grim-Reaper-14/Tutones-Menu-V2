@@ -7,6 +7,7 @@
 #include "../features/player/PlayerService.hpp"
 #include "../features/player/PlayerStatsService.hpp"
 #include "../features/player/SelfOnlineService.hpp"
+#include "../features/protection/ProtectionService.hpp"
 #include "../features/online/OnlineStatusService.hpp"
 #include "../features/utility/UtilityService.hpp"
 #include "../features/vehicle/VehicleService.hpp"
@@ -45,6 +46,14 @@ namespace TutonesV2::App
             Core::Logger::Get().Error("core", "Settings service initialization failed");
             Shutdown();
             return false;
+        }
+
+        Features::Protection::ProtectionRuntime::Get().PrepareForStart();
+        if (!Features::Protection::ProtectionRuntime::Get().Start())
+        {
+            Core::Logger::Get().Warn(
+                "protections",
+                "Protection runtime did not start; V2 will continue without packet protections");
         }
 
         {
@@ -100,6 +109,7 @@ namespace TutonesV2::App
             return;
 
         Core::Logger::Get().Info("core", "Tutones Menu V2 shutting down");
+        Features::Protection::ProtectionRuntime::Get().Stop();
         Features::World::WorldService::Get().Shutdown();
         Features::World::TeleportService::Get().Shutdown();
         Features::Vehicle::VehicleService::Get().Shutdown();
