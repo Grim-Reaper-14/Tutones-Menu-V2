@@ -1,6 +1,7 @@
 #include "VehicleService.hpp"
 #include "../../game/GameRuntime.hpp"
 #include "../../game/native/NativeInvoker.hpp"
+#include "../../game/vehicle/VehicleModels.hpp"
 #include <algorithm>
 #include <cmath>
 #include <utility>
@@ -41,16 +42,21 @@ namespace TutonesV2::Features::Vehicle
     VehicleService& VehicleService::Get() noexcept { static VehicleService s; return s; }
 
     bool VehicleService::Initialize() noexcept {
-        m_Busy=false;m_LoopQueued=false;m_FeatureLoopQueued=false;
+        m_Busy=false;m_LoopQueued=false;m_FeatureLoopQueued=false;m_CatalogLoopQueued=false;
         m_VehicleGodMode=false;m_KeepVehicleClean=false;m_HornBoost=false;
-        m_PendingModel=0;m_Attempts=0;m_LastGodVehicle=0;
-        m_BoostSpeed=10.0f;m_WasHornPressed=false;
-        {std::scoped_lock lock(m_Mutex);m_Snapshot={};}
+        m_PendingModel=0;m_Attempts=0;m_LastGodVehicle=0;m_Maxed=false;
+        m_BoostSpeed=10.0f;m_WasHornPressed=false;m_CatalogCursor=0;
+        {
+            std::scoped_lock lock(m_Mutex);
+            m_Snapshot={};
+            m_CatalogClasses.assign(Game::VehicleCatalogs::VehicleModels.size(), -2);
+            m_CatalogDisplayNames.assign(Game::VehicleCatalogs::VehicleModels.size(), {});
+        }
         m_Ready=true; return true;
     }
     void VehicleService::Shutdown() noexcept {
         if(!m_Ready.exchange(false))return;
-        m_Busy=false;m_LoopQueued=false;m_FeatureLoopQueued=false;m_PendingModel=0;
+        m_Busy=false;m_LoopQueued=false;m_FeatureLoopQueued=false;m_CatalogLoopQueued=false;m_PendingModel=0;
         m_VehicleGodMode=false;m_KeepVehicleClean=false;m_HornBoost=false;
         if(Game::GameRuntime::Get().NativeReady()){
             static_cast<void>(Game::GameRuntime::Get().Enqueue([this]{
@@ -65,11 +71,34 @@ namespace TutonesV2::Features::Vehicle
     bool VehicleService::HornBoost() const noexcept { return m_HornBoost.load(); }
     VehicleSnapshot VehicleService::Snapshot() const { std::scoped_lock lock(m_Mutex); auto s=m_Snapshot; s.busy=m_Busy.load(); return s; }
 
+    VehicleCatalogSnapshot VehicleService::CatalogSnapshot() const {
+        std::scoped_lock lock(m_Mutex);
+        VehicleCatalogSnapshot snapshot{};
+        snapshot.classes=m_CatalogClasses;
+        snapshot.displayNames=m_CatalogDisplayNames;
+        snapshot.total=m_CatalogClasses.size();
+        snapshot.ready=std::min(m_CatalogCursor,snapshot.total);
+        snapshot.loading=m_CatalogLoopQueued.load(std::memory_order_acquire);
+        return snapshot;
+    }
+
+    void VehicleService::EnsureCatalog() noexcept {
+        if(!IsReady()||!Game::GameRuntime::Get().NativeReady())return;
+        {
+            std::scoped_lock lock(m_Mutex);
+            if(m_CatalogCursor>=m_CatalogClasses.size())return;
+        }
+        bool expected=false;
+        if(!m_CatalogLoopQueued.compare_exchange_strong(expected,true,std::memory_order_acq_rel))return;
+        if(!Game::GameRuntime::Get().Enqueue([this]{CatalogTick();}))
+            m_CatalogLoopQueued.store(false,std::memory_order_release);
+    }
+
     std::uint32_t VehicleService::Joaat(const std::string& value) noexcept {
         std::uint32_t h{};for(unsigned char c:value){if(c>='A'&&c<='Z')c=static_cast<unsigned char>(c-'A'+'a');h+=c;h+=h<<10;h^=h>>6;}h+=h<<3;h^=h>>11;h+=h<<15;return h;
     }
 
-    bool VehicleService::QueueSpawn(std::string name,bool enterVehicle,bool networked) noexcept {
+    bool VehicleService::QueueSpawn(std::string name,bool enterVehicle,bool networked,bool maxed) noexcept {
         if(!IsReady()||!Game::GameRuntime::Get().NativeReady()||name.empty())return false;
         bool expected=false;if(!m_Busy.compare_exchange_strong(expected,true))return false;
         {
@@ -78,13 +107,13 @@ namespace TutonesV2::Features::Vehicle
             m_Snapshot.lastSucceeded=false;
         }
         const auto model=Joaat(name);
-        if(Game::GameRuntime::Get().Enqueue([this,model,enterVehicle,networked]{
+        if(Game::GameRuntime::Get().Enqueue([this,model,enterVehicle,networked,maxed]{
             const auto cd=NativeInvoker::Invoke<std::int32_t>(NativeId::IsModelInCdimage,model);
             const auto valid=NativeInvoker::Invoke<std::int32_t>(NativeId::IsModelValid,model);
             const auto vehicle=NativeInvoker::Invoke<std::int32_t>(NativeId::IsModelAVehicle,model);
             if(!cd||!*cd||!valid||!*valid||!vehicle||!*vehicle){Finish(false,0,"Invalid vehicle model");return;}
             if(!NativeInvoker::InvokeVoid(NativeId::RequestModel,model)){Finish(false,0,"REQUEST_MODEL failed");return;}
-            m_EnterVehicle=enterVehicle;m_Networked=networked;m_Attempts=0;m_PendingModel=model;
+            m_EnterVehicle=enterVehicle;m_Networked=networked;m_Maxed=maxed;m_Attempts=0;m_PendingModel=model;
             {
                 std::scoped_lock lock(m_Mutex);
                 m_Snapshot.message="Streaming vehicle model...";
@@ -98,6 +127,74 @@ namespace TutonesV2::Features::Vehicle
         bool expected=false;if(!m_LoopQueued.compare_exchange_strong(expected,true))return true;
         if(Game::GameRuntime::Get().Enqueue([this]{SpawnTick();}))return true;
         m_LoopQueued=false;return false;
+    }
+
+    void VehicleService::CatalogTick() noexcept {
+        if(!IsReady()||!Game::GameRuntime::Get().NativeReady()){
+            m_CatalogLoopQueued.store(false,std::memory_order_release);
+            return;
+        }
+
+        constexpr std::size_t BatchSize=12;
+        std::size_t start{};
+        std::size_t end{};
+        {
+            std::scoped_lock lock(m_Mutex);
+            start=m_CatalogCursor;
+            end=std::min(start+BatchSize,m_CatalogClasses.size());
+        }
+
+        for(std::size_t i=start;i<end;++i){
+            const char* modelName=Game::VehicleCatalogs::VehicleModels[i];
+            const auto hash=Joaat(modelName);
+
+            int classIndex=-1;
+            if(const auto vehicleClass=NativeInvoker::Invoke<std::int32_t>(NativeId::GetVehicleClassFromName,hash))
+                classIndex=*vehicleClass;
+
+            std::string display=modelName;
+            if(const auto label=NativeInvoker::Invoke<const char*>(NativeId::GetDisplayNameFromVehicleModel,hash);
+                label&&*label&&**label){
+                if(const auto localized=NativeInvoker::Invoke<const char*>(NativeId::GetLabelText,*label);
+                    localized&&*localized&&**localized&&std::string_view(*localized)!="NULL"){
+                    display=*localized;
+                }else{
+                    display=*label;
+                }
+            }
+
+            std::scoped_lock lock(m_Mutex);
+            m_CatalogClasses[i]=classIndex;
+            m_CatalogDisplayNames[i]=std::move(display);
+            m_CatalogCursor=i+1;
+        }
+
+        bool done{};
+        {
+            std::scoped_lock lock(m_Mutex);
+            done=m_CatalogCursor>=m_CatalogClasses.size();
+        }
+        if(done){
+            m_CatalogLoopQueued.store(false,std::memory_order_release);
+            return;
+        }
+
+        if(!Game::GameRuntime::Get().Enqueue([this]{CatalogTick();}))
+            m_CatalogLoopQueued.store(false,std::memory_order_release);
+    }
+
+    bool VehicleService::MaxVehicle(int vehicle) noexcept {
+        if(!vehicle)return false;
+        bool ok=NativeInvoker::InvokeVoid(NativeId::SetVehicleModKit,vehicle,0);
+        for(int type=0;type<50;++type){
+            const auto count=NativeInvoker::Invoke<std::int32_t>(NativeId::GetNumVehicleMods,vehicle,type);
+            if(count&&*count>0)
+                ok=NativeInvoker::InvokeVoid(NativeId::SetVehicleMod,vehicle,type,*count-1,std::int32_t{0})&&ok;
+        }
+        constexpr int ToggleSlots[]{17,18,20,22};
+        for(const int type:ToggleSlots)
+            ok=NativeInvoker::InvokeVoid(NativeId::ToggleVehicleMod,vehicle,type,std::int32_t{1})&&ok;
+        return ok;
     }
 
     void VehicleService::SpawnTick() noexcept {
@@ -143,6 +240,7 @@ namespace TutonesV2::Features::Vehicle
         else static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetEntityAsMissionEntity,veh,std::int32_t{1},std::int32_t{1}));
 
         static_cast<void>(NativeInvoker::Invoke<std::int32_t>(NativeId::SetVehicleOnGroundProperly,veh,5.0f));
+        if(m_Maxed) static_cast<void>(MaxVehicle(veh));
         if(m_EnterVehicle) static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetPedIntoVehicle,ped,veh,-1));
         static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetModelAsNoLongerNeeded,model));
         m_PendingModel=0;m_LoopQueued=false;
