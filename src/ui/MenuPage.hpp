@@ -14,6 +14,8 @@ namespace TutonesV2::UI
         World,
         Recovery,
         Settings,
+        Online,
+        Misc,
     };
 
     struct MenuPageDescriptor final
@@ -22,13 +24,15 @@ namespace TutonesV2::UI
         const char* Label;
     };
 
-    inline constexpr std::array<MenuPageDescriptor, 7> MenuPages{{
+    inline constexpr std::array<MenuPageDescriptor, 9> MenuPages{{
         {MenuPage::Self, "Self"},
         {MenuPage::Weapons, "Weapons"},
         {MenuPage::Vehicle, "Vehicle"},
+        {MenuPage::Online, "Online"},
         {MenuPage::Teleport, "Teleport"},
         {MenuPage::World, "World"},
         {MenuPage::Recovery, "Recovery"},
+        {MenuPage::Misc, "Misc"},
         {MenuPage::Settings, "Settings"},
     }};
 
@@ -43,6 +47,8 @@ namespace TutonesV2::UI
         case MenuPage::World: return "World";
         case MenuPage::Recovery: return "Recovery";
         case MenuPage::Settings: return "Settings";
+        case MenuPage::Online: return "Online";
+        case MenuPage::Misc: return "Misc";
         }
 
         return "Self";
