@@ -67,6 +67,10 @@ namespace TutonesV2::Features::World
         m_FoundGround = false;
         m_ResolveCoords = {};
         m_ResolveLabel.clear();
+        m_ControlEntity = 0;
+        m_ControlAttempt = 0;
+        m_ControlCoords = {};
+        m_ControlLabel.clear();
 
         {
             std::scoped_lock lock(m_Mutex);
@@ -434,6 +438,14 @@ namespace TutonesV2::Features::World
         }
 
         const int ped = LocalPed();
+        if (ped == 0 || !EntityExists(ped))
+        {
+            Finish(false, std::move(label) + " failed: local player unavailable");
+            return;
+        }
+
+        // YimMenuV2 Ped::TeleportTo uses the active vehicle returned by
+        // GET_VEHICLE_PED_IS_USING; otherwise it moves the ped directly.
         const int entity = TeleportEntity(ped);
         if (entity == 0)
         {
@@ -441,7 +453,75 @@ namespace TutonesV2::Features::World
             return;
         }
 
-        // Match YimMenuV2 Entity::SetPosition.
+        if (entity != ped)
+        {
+            BeginControlledVehicleTeleport(entity, coords, std::move(label));
+            return;
+        }
+
+        MoveResolvedEntity(entity, coords, std::move(label));
+    }
+
+    void TeleportService::BeginControlledVehicleTeleport(
+        int vehicle,
+        const NativeVector3& coords,
+        std::string label) noexcept
+    {
+        m_ControlEntity = vehicle;
+        m_ControlCoords = coords;
+        m_ControlLabel = std::move(label);
+        m_ControlAttempt = 0;
+
+        {
+            std::scoped_lock lock(m_Mutex);
+            m_Snapshot.message = m_ControlLabel + ": acquiring active-vehicle control";
+        }
+
+        ControlledVehicleTeleportTick();
+    }
+
+    void TeleportService::ControlledVehicleTeleportTick() noexcept
+    {
+        if (!m_Pending.load(std::memory_order_acquire))
+            return;
+
+        if (!EntityExists(m_ControlEntity))
+        {
+            Finish(false, m_ControlLabel + " failed: active vehicle disappeared");
+            return;
+        }
+
+        const auto hasControl = NativeInvoker::Invoke<std::int32_t>(
+            NativeId::NetworkHasControlOfEntity,
+            m_ControlEntity);
+
+        if (hasControl && *hasControl != 0)
+        {
+            MoveResolvedEntity(m_ControlEntity, m_ControlCoords, m_ControlLabel);
+            return;
+        }
+
+        static_cast<void>(NativeInvoker::Invoke<std::int32_t>(
+            NativeId::NetworkRequestControlOfEntity,
+            m_ControlEntity));
+
+        ++m_ControlAttempt;
+        if (m_ControlAttempt < 10)
+        {
+            if (Game::GameRuntime::Get().Enqueue([this] { ControlledVehicleTeleportTick(); }))
+                return;
+        }
+
+        // YimMenuV2 ultimately calls Entity::SetPosition even if its debug
+        // control assertion only warns. Preserve that final behavior here.
+        MoveResolvedEntity(m_ControlEntity, m_ControlCoords, m_ControlLabel);
+    }
+
+    void TeleportService::MoveResolvedEntity(
+        int entity,
+        const NativeVector3& coords,
+        std::string label) noexcept
+    {
         const bool moved = NativeInvoker::InvokeVoid(
             NativeId::SetEntityCoordsNoOffset,
             entity,
@@ -522,6 +602,9 @@ namespace TutonesV2::Features::World
         m_GroundAttempt = 0;
         m_FoundGround = false;
         m_ResolveLabel.clear();
+        m_ControlEntity = 0;
+        m_ControlAttempt = 0;
+        m_ControlLabel.clear();
 
         std::scoped_lock lock(m_Mutex);
         m_Snapshot.pending = false;

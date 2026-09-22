@@ -42,6 +42,15 @@ namespace TutonesV2::Features::World
         void ResolveZTick() noexcept;
         void FinishZResolution() noexcept;
         void TeleportResolved(const Game::Native::NativeVector3& coords, std::string label) noexcept;
+        void BeginControlledVehicleTeleport(
+            int vehicle,
+            const Game::Native::NativeVector3& coords,
+            std::string label) noexcept;
+        void ControlledVehicleTeleportTick() noexcept;
+        void MoveResolvedEntity(
+            int entity,
+            const Game::Native::NativeVector3& coords,
+            std::string label) noexcept;
         [[nodiscard]] int LocalPed() const noexcept;
         [[nodiscard]] int TeleportEntity(int ped) const noexcept;
 
@@ -60,6 +69,11 @@ namespace TutonesV2::Features::World
         int m_GroundAttempt{};
         bool m_FoundGround{};
         std::string m_ResolveLabel{};
+
+        int m_ControlEntity{};
+        int m_ControlAttempt{};
+        Game::Native::NativeVector3 m_ControlCoords{};
+        std::string m_ControlLabel{};
 
         mutable std::mutex m_Mutex;
         TeleportSnapshot m_Snapshot{};
