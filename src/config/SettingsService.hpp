@@ -45,6 +45,55 @@ namespace TutonesV2::Config
         bool miscShowFps{};
         bool miscShowSessionInfo{};
         bool miscDisableCameraShake{};
+
+        bool selfGodMode{};
+        bool selfBulletproof{};
+        bool selfInvisible{};
+        bool selfDisableCriticalHits{};
+        bool selfKeepClean{};
+        bool selfNoRagdoll{};
+        bool selfNeverWanted{};
+        bool selfPoliceIgnore{};
+        bool selfEveryoneIgnore{};
+        bool selfSuperJump{};
+        bool selfInfiniteStamina{};
+        bool selfStandOnVehicles{};
+        bool selfDisableActionMode{};
+        bool selfAquaLungs{};
+        bool selfInfiniteOxygen{};
+        bool selfInfiniteParachutes{};
+        bool selfMobileRadio{};
+        float selfRunMultiplier{1.0f};
+        float selfSwimMultiplier{1.0f};
+        int selfRadarMode{};
+
+        bool weaponInfiniteAmmo{};
+        bool weaponInfiniteClip{};
+        bool weaponExplosiveAmmo{};
+        bool weaponAimbot{};
+        bool weaponAimForHead{true};
+        bool weaponTargetDrivers{true};
+        bool weaponLaserSight{};
+
+        bool vehicleGodMode{};
+        bool vehicleKeepClean{};
+        bool vehicleHornBoost{};
+        bool vehicleSpawnMaxed{};
+        int vehicleClassFilter{-1};
+
+        bool teleportAutoWaypoint{};
+
+        bool worldFreezeClock{};
+        bool worldBlackout{};
+        bool worldWeatherOverride{};
+        int worldWeatherIndex{1};
+        float worldPedDensity{1.0f};
+        float worldScenarioPedDensity{1.0f};
+        float worldVehicleDensity{1.0f};
+        float worldRandomVehicleDensity{1.0f};
+        float worldParkedVehicleDensity{1.0f};
+        int worldHour{12};
+        int worldMinute{};
     };
 
     class SettingsService final

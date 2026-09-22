@@ -86,6 +86,18 @@ namespace TutonesV2::Config
             settings.selfPalette = std::clamp(settings.selfPalette, 0, 3);
             settings.teleportDirectionalDistance =
                 std::clamp(settings.teleportDirectionalDistance, 1.0f, 100.0f);
+            settings.selfRunMultiplier = std::clamp(settings.selfRunMultiplier, 1.0f, 1.49f);
+            settings.selfSwimMultiplier = std::clamp(settings.selfSwimMultiplier, 1.0f, 1.49f);
+            settings.selfRadarMode = std::clamp(settings.selfRadarMode, 0, 2);
+            settings.vehicleClassFilter = std::clamp(settings.vehicleClassFilter, -1, 22);
+            settings.worldWeatherIndex = std::clamp(settings.worldWeatherIndex, 0, 16);
+            settings.worldPedDensity = std::clamp(settings.worldPedDensity, 0.0f, 1.0f);
+            settings.worldScenarioPedDensity = std::clamp(settings.worldScenarioPedDensity, 0.0f, 1.0f);
+            settings.worldVehicleDensity = std::clamp(settings.worldVehicleDensity, 0.0f, 1.0f);
+            settings.worldRandomVehicleDensity = std::clamp(settings.worldRandomVehicleDensity, 0.0f, 1.0f);
+            settings.worldParkedVehicleDensity = std::clamp(settings.worldParkedVehicleDensity, 0.0f, 1.0f);
+            settings.worldHour = std::clamp(settings.worldHour, 0, 23);
+            settings.worldMinute = std::clamp(settings.worldMinute, 0, 59);
 
             if (settings.selfPedModel.empty())
                 settings.selfPedModel = "mp_m_freemode_01";
@@ -246,6 +258,53 @@ namespace TutonesV2::Config
                 else if (key == "show_session_info") loaded.miscShowSessionInfo = ParseBool(value, loaded.miscShowSessionInfo);
                 else if (key == "disable_camera_shake") loaded.miscDisableCameraShake = ParseBool(value, loaded.miscDisableCameraShake);
             }
+            else if (section == "features")
+            {
+                if (key == "self_god_mode") loaded.selfGodMode = ParseBool(value, loaded.selfGodMode);
+                else if (key == "self_bulletproof") loaded.selfBulletproof = ParseBool(value, loaded.selfBulletproof);
+                else if (key == "self_invisible") loaded.selfInvisible = ParseBool(value, loaded.selfInvisible);
+                else if (key == "self_disable_critical_hits") loaded.selfDisableCriticalHits = ParseBool(value, loaded.selfDisableCriticalHits);
+                else if (key == "self_keep_clean") loaded.selfKeepClean = ParseBool(value, loaded.selfKeepClean);
+                else if (key == "self_no_ragdoll") loaded.selfNoRagdoll = ParseBool(value, loaded.selfNoRagdoll);
+                else if (key == "self_never_wanted") loaded.selfNeverWanted = ParseBool(value, loaded.selfNeverWanted);
+                else if (key == "self_police_ignore") loaded.selfPoliceIgnore = ParseBool(value, loaded.selfPoliceIgnore);
+                else if (key == "self_everyone_ignore") loaded.selfEveryoneIgnore = ParseBool(value, loaded.selfEveryoneIgnore);
+                else if (key == "self_super_jump") loaded.selfSuperJump = ParseBool(value, loaded.selfSuperJump);
+                else if (key == "self_infinite_stamina") loaded.selfInfiniteStamina = ParseBool(value, loaded.selfInfiniteStamina);
+                else if (key == "self_stand_on_vehicles") loaded.selfStandOnVehicles = ParseBool(value, loaded.selfStandOnVehicles);
+                else if (key == "self_disable_action_mode") loaded.selfDisableActionMode = ParseBool(value, loaded.selfDisableActionMode);
+                else if (key == "self_aqua_lungs") loaded.selfAquaLungs = ParseBool(value, loaded.selfAquaLungs);
+                else if (key == "self_infinite_oxygen") loaded.selfInfiniteOxygen = ParseBool(value, loaded.selfInfiniteOxygen);
+                else if (key == "self_infinite_parachutes") loaded.selfInfiniteParachutes = ParseBool(value, loaded.selfInfiniteParachutes);
+                else if (key == "self_mobile_radio") loaded.selfMobileRadio = ParseBool(value, loaded.selfMobileRadio);
+                else if (key == "self_run_multiplier") loaded.selfRunMultiplier = ParseFloat(value, loaded.selfRunMultiplier);
+                else if (key == "self_swim_multiplier") loaded.selfSwimMultiplier = ParseFloat(value, loaded.selfSwimMultiplier);
+                else if (key == "self_radar_mode") loaded.selfRadarMode = ParseInt(value, loaded.selfRadarMode);
+                else if (key == "weapon_infinite_ammo") loaded.weaponInfiniteAmmo = ParseBool(value, loaded.weaponInfiniteAmmo);
+                else if (key == "weapon_infinite_clip") loaded.weaponInfiniteClip = ParseBool(value, loaded.weaponInfiniteClip);
+                else if (key == "weapon_explosive_ammo") loaded.weaponExplosiveAmmo = ParseBool(value, loaded.weaponExplosiveAmmo);
+                else if (key == "weapon_aimbot") loaded.weaponAimbot = ParseBool(value, loaded.weaponAimbot);
+                else if (key == "weapon_aim_for_head") loaded.weaponAimForHead = ParseBool(value, loaded.weaponAimForHead);
+                else if (key == "weapon_target_drivers") loaded.weaponTargetDrivers = ParseBool(value, loaded.weaponTargetDrivers);
+                else if (key == "weapon_laser_sight") loaded.weaponLaserSight = ParseBool(value, loaded.weaponLaserSight);
+                else if (key == "vehicle_god_mode") loaded.vehicleGodMode = ParseBool(value, loaded.vehicleGodMode);
+                else if (key == "vehicle_keep_clean") loaded.vehicleKeepClean = ParseBool(value, loaded.vehicleKeepClean);
+                else if (key == "vehicle_horn_boost") loaded.vehicleHornBoost = ParseBool(value, loaded.vehicleHornBoost);
+                else if (key == "vehicle_spawn_maxed") loaded.vehicleSpawnMaxed = ParseBool(value, loaded.vehicleSpawnMaxed);
+                else if (key == "vehicle_class_filter") loaded.vehicleClassFilter = ParseInt(value, loaded.vehicleClassFilter);
+                else if (key == "teleport_auto_waypoint") loaded.teleportAutoWaypoint = ParseBool(value, loaded.teleportAutoWaypoint);
+                else if (key == "world_freeze_clock") loaded.worldFreezeClock = ParseBool(value, loaded.worldFreezeClock);
+                else if (key == "world_blackout") loaded.worldBlackout = ParseBool(value, loaded.worldBlackout);
+                else if (key == "world_weather_override") loaded.worldWeatherOverride = ParseBool(value, loaded.worldWeatherOverride);
+                else if (key == "world_weather_index") loaded.worldWeatherIndex = ParseInt(value, loaded.worldWeatherIndex);
+                else if (key == "world_ped_density") loaded.worldPedDensity = ParseFloat(value, loaded.worldPedDensity);
+                else if (key == "world_scenario_ped_density") loaded.worldScenarioPedDensity = ParseFloat(value, loaded.worldScenarioPedDensity);
+                else if (key == "world_vehicle_density") loaded.worldVehicleDensity = ParseFloat(value, loaded.worldVehicleDensity);
+                else if (key == "world_random_vehicle_density") loaded.worldRandomVehicleDensity = ParseFloat(value, loaded.worldRandomVehicleDensity);
+                else if (key == "world_parked_vehicle_density") loaded.worldParkedVehicleDensity = ParseFloat(value, loaded.worldParkedVehicleDensity);
+                else if (key == "world_hour") loaded.worldHour = ParseInt(value, loaded.worldHour);
+                else if (key == "world_minute") loaded.worldMinute = ParseInt(value, loaded.worldMinute);
+            }
         }
 
         Clamp(loaded);
@@ -323,7 +382,53 @@ namespace TutonesV2::Config
         output << "show_heading=" << (snapshot.miscShowHeading ? "true" : "false") << "\n";
         output << "show_fps=" << (snapshot.miscShowFps ? "true" : "false") << "\n";
         output << "show_session_info=" << (snapshot.miscShowSessionInfo ? "true" : "false") << "\n";
-        output << "disable_camera_shake=" << (snapshot.miscDisableCameraShake ? "true" : "false") << "\n";
+        output << "disable_camera_shake=" << (snapshot.miscDisableCameraShake ? "true" : "false") << "\n\n";
+
+        output << "[features]\n";
+        output << "self_god_mode=" << (snapshot.selfGodMode ? "true" : "false") << "\n";
+        output << "self_bulletproof=" << (snapshot.selfBulletproof ? "true" : "false") << "\n";
+        output << "self_invisible=" << (snapshot.selfInvisible ? "true" : "false") << "\n";
+        output << "self_disable_critical_hits=" << (snapshot.selfDisableCriticalHits ? "true" : "false") << "\n";
+        output << "self_keep_clean=" << (snapshot.selfKeepClean ? "true" : "false") << "\n";
+        output << "self_no_ragdoll=" << (snapshot.selfNoRagdoll ? "true" : "false") << "\n";
+        output << "self_never_wanted=" << (snapshot.selfNeverWanted ? "true" : "false") << "\n";
+        output << "self_police_ignore=" << (snapshot.selfPoliceIgnore ? "true" : "false") << "\n";
+        output << "self_everyone_ignore=" << (snapshot.selfEveryoneIgnore ? "true" : "false") << "\n";
+        output << "self_super_jump=" << (snapshot.selfSuperJump ? "true" : "false") << "\n";
+        output << "self_infinite_stamina=" << (snapshot.selfInfiniteStamina ? "true" : "false") << "\n";
+        output << "self_stand_on_vehicles=" << (snapshot.selfStandOnVehicles ? "true" : "false") << "\n";
+        output << "self_disable_action_mode=" << (snapshot.selfDisableActionMode ? "true" : "false") << "\n";
+        output << "self_aqua_lungs=" << (snapshot.selfAquaLungs ? "true" : "false") << "\n";
+        output << "self_infinite_oxygen=" << (snapshot.selfInfiniteOxygen ? "true" : "false") << "\n";
+        output << "self_infinite_parachutes=" << (snapshot.selfInfiniteParachutes ? "true" : "false") << "\n";
+        output << "self_mobile_radio=" << (snapshot.selfMobileRadio ? "true" : "false") << "\n";
+        output << "self_run_multiplier=" << snapshot.selfRunMultiplier << "\n";
+        output << "self_swim_multiplier=" << snapshot.selfSwimMultiplier << "\n";
+        output << "self_radar_mode=" << snapshot.selfRadarMode << "\n";
+        output << "weapon_infinite_ammo=" << (snapshot.weaponInfiniteAmmo ? "true" : "false") << "\n";
+        output << "weapon_infinite_clip=" << (snapshot.weaponInfiniteClip ? "true" : "false") << "\n";
+        output << "weapon_explosive_ammo=" << (snapshot.weaponExplosiveAmmo ? "true" : "false") << "\n";
+        output << "weapon_aimbot=" << (snapshot.weaponAimbot ? "true" : "false") << "\n";
+        output << "weapon_aim_for_head=" << (snapshot.weaponAimForHead ? "true" : "false") << "\n";
+        output << "weapon_target_drivers=" << (snapshot.weaponTargetDrivers ? "true" : "false") << "\n";
+        output << "weapon_laser_sight=" << (snapshot.weaponLaserSight ? "true" : "false") << "\n";
+        output << "vehicle_god_mode=" << (snapshot.vehicleGodMode ? "true" : "false") << "\n";
+        output << "vehicle_keep_clean=" << (snapshot.vehicleKeepClean ? "true" : "false") << "\n";
+        output << "vehicle_horn_boost=" << (snapshot.vehicleHornBoost ? "true" : "false") << "\n";
+        output << "vehicle_spawn_maxed=" << (snapshot.vehicleSpawnMaxed ? "true" : "false") << "\n";
+        output << "vehicle_class_filter=" << snapshot.vehicleClassFilter << "\n";
+        output << "teleport_auto_waypoint=" << (snapshot.teleportAutoWaypoint ? "true" : "false") << "\n";
+        output << "world_freeze_clock=" << (snapshot.worldFreezeClock ? "true" : "false") << "\n";
+        output << "world_blackout=" << (snapshot.worldBlackout ? "true" : "false") << "\n";
+        output << "world_weather_override=" << (snapshot.worldWeatherOverride ? "true" : "false") << "\n";
+        output << "world_weather_index=" << snapshot.worldWeatherIndex << "\n";
+        output << "world_ped_density=" << snapshot.worldPedDensity << "\n";
+        output << "world_scenario_ped_density=" << snapshot.worldScenarioPedDensity << "\n";
+        output << "world_vehicle_density=" << snapshot.worldVehicleDensity << "\n";
+        output << "world_random_vehicle_density=" << snapshot.worldRandomVehicleDensity << "\n";
+        output << "world_parked_vehicle_density=" << snapshot.worldParkedVehicleDensity << "\n";
+        output << "world_hour=" << snapshot.worldHour << "\n";
+        output << "world_minute=" << snapshot.worldMinute << "\n";
 
         output.flush();
         if (!output.good())
