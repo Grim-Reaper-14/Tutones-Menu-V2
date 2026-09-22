@@ -58,6 +58,7 @@ add_library(Tutones-Menu-V2 SHARED
     src/features/player/SelfOnlineService.cpp
     src/features/player/PlayerStatsService.cpp
     src/features/online/OnlineStatusService.cpp
+    src/features/online/OnlinePlayerService.cpp
     src/features/utility/UtilityService.cpp
     src/features/weapon/WeaponAimPatches.cpp
     src/features/weapon/WeaponService.cpp
