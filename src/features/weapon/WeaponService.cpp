@@ -61,7 +61,7 @@ namespace TutonesV2::Features::Weapon
     }
 
     bool WeaponService::HasPersistentWork() const noexcept {
-        return m_InfiniteAmmo||m_InfiniteClip||m_ExplosiveAmmo||m_Aimbot||m_LaserSight;
+        return m_InfiniteAmmo||m_InfiniteClip||m_ExplosiveAmmo||m_LaserSight;
     }
     bool WeaponService::EnsureLoop() noexcept {
         if(!IsReady()||!Game::GameRuntime::Get().NativeReady()||!HasPersistentWork()) return false;
@@ -71,10 +71,10 @@ namespace TutonesV2::Features::Weapon
     }
     void WeaponService::Tick() noexcept {
         if(!IsReady()){m_LoopQueued=false;return;}
-        ApplyAimState();
-        static_cast<void>(NativeInvoker::InvokeVoid(
-            NativeId::EnableLaserSightRendering,
-            std::int32_t{m_LaserSight.load()?1:0}));
+        if(m_LaserSight.load())
+            static_cast<void>(NativeInvoker::InvokeVoid(
+                NativeId::EnableLaserSightRendering,
+                std::int32_t{1}));
         const int ped=Ped();
         if(ped){
             static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetPedInfiniteAmmo,ped,std::int32_t{m_InfiniteAmmo?1:0},std::uint32_t{0}));
@@ -104,30 +104,38 @@ namespace TutonesV2::Features::Weapon
     bool WeaponService::SetAimbot(bool enabled) noexcept {
         if(!IsReady()||!Game::GameRuntime::Get().NativeReady())return false;
         if(enabled&&!AimbotSupported())return false;
-        m_Aimbot=enabled;
-        if(enabled)return EnsureLoop();
-        return Game::GameRuntime::Get().Enqueue([this]{
-            auto& patches=WeaponAimPatches::Get();
-            static_cast<void>(patches.ApplyAimForHead(false));
-            static_cast<void>(patches.ApplyTargetDrivers(false));
-            static_cast<void>(patches.ApplyAimbot(false));
-        });
+
+        auto& patches=WeaponAimPatches::Get();
+        if(enabled){
+            if(!patches.ApplyAimbot(true))
+                return false;
+
+            m_Aimbot=true;
+            static_cast<void>(patches.ApplyAimForHead(m_AimForHead.load()));
+            static_cast<void>(patches.ApplyTargetDrivers(m_TargetDrivers.load()));
+            return true;
+        }
+
+        m_Aimbot=false;
+        static_cast<void>(patches.ApplyAimForHead(false));
+        static_cast<void>(patches.ApplyTargetDrivers(false));
+        return patches.ApplyAimbot(false);
     }
 
     bool WeaponService::SetAimForHead(bool enabled) noexcept {
         if(!IsReady())return false;
         if(enabled&&!AimForHeadSupported())return false;
         m_AimForHead=enabled;
-        if(m_Aimbot.load())return EnsureLoop();
-        return true;
+        if(!m_Aimbot.load())return true;
+        return WeaponAimPatches::Get().ApplyAimForHead(enabled);
     }
 
     bool WeaponService::SetTargetDrivers(bool enabled) noexcept {
         if(!IsReady())return false;
         if(enabled&&!TargetDriversSupported())return false;
         m_TargetDrivers=enabled;
-        if(m_Aimbot.load())return EnsureLoop();
-        return true;
+        if(!m_Aimbot.load())return true;
+        return WeaponAimPatches::Get().ApplyTargetDrivers(enabled);
     }
 
     bool WeaponService::SetLaserSight(bool enabled) noexcept {
