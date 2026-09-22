@@ -165,22 +165,18 @@ namespace TutonesV2::Config
 
             case 3:
             {
-                Core::Logger::Get().Info("settings.restore", "Stage 4: Weapon aim and laser state");
-                auto& weapons = Features::Weapon::WeaponService::Get();
+                Core::Logger::Get().Info(
+                    "settings.restore",
+                    "Stage 4: Risky weapon state held for manual test");
 
                 if (settings.weaponAimbot)
-                {
-                    Core::Logger::Get().Info("settings.restore", "Restoring saved Aimbot");
-                    static_cast<void>(weapons.SetAimForHead(settings.weaponAimForHead));
-                    static_cast<void>(weapons.SetTargetDrivers(settings.weaponTargetDrivers));
-                    static_cast<void>(weapons.SetAimbot(true));
-                }
-
+                    Core::Logger::Get().Warn(
+                        "settings.restore",
+                        "Saved Aimbot remains disabled on injection; enable it manually after GTA is fully loaded");
                 if (settings.weaponLaserSight)
-                {
-                    Core::Logger::Get().Info("settings.restore", "Restoring saved native Laser Sight");
-                    static_cast<void>(weapons.SetLaserSight(true));
-                }
+                    Core::Logger::Get().Warn(
+                        "settings.restore",
+                        "Saved Laser Sight remains disabled on injection; enable it manually after GTA is fully loaded");
                 break;
             }
 
