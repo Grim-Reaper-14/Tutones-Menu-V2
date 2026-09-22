@@ -241,6 +241,7 @@ namespace TutonesV2::Config
                 if (key == "model") loaded.vehicleModel = ParseString(value, loaded.vehicleModel);
                 else if (key == "enter_after_spawn") loaded.vehicleEnterAfterSpawn = ParseBool(value, loaded.vehicleEnterAfterSpawn);
                 else if (key == "networked") loaded.vehicleNetworked = ParseBool(value, loaded.vehicleNetworked);
+                else if (key == "clone_inside") loaded.vehicleCloneInside = ParseBool(value, loaded.vehicleCloneInside);
             }
             else if (section == "teleport")
             {
@@ -368,7 +369,8 @@ namespace TutonesV2::Config
         output << "[vehicle]\n";
         output << "model=" << std::quoted(snapshot.vehicleModel) << "\n";
         output << "enter_after_spawn=" << (snapshot.vehicleEnterAfterSpawn ? "true" : "false") << "\n";
-        output << "networked=" << (snapshot.vehicleNetworked ? "true" : "false") << "\n\n";
+        output << "networked=" << (snapshot.vehicleNetworked ? "true" : "false") << "\n";
+        output << "clone_inside=" << (snapshot.vehicleCloneInside ? "true" : "false") << "\n\n";
 
         output << "[teleport]\n";
         output << "x=" << snapshot.teleportX << "\n";

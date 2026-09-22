@@ -33,6 +33,7 @@ namespace TutonesV2::Config
         std::string vehicleModel{"adder"};
         bool vehicleEnterAfterSpawn{true};
         bool vehicleNetworked{true};
+        bool vehicleCloneInside{true};
 
         float teleportX{};
         float teleportY{};
