@@ -2,6 +2,7 @@
 
 #include "MenuTheme.hpp"
 #include "../backend/BackendHub.hpp"
+#include "../config/SettingsService.hpp"
 #include "../features/player/PlayerService.hpp"
 #include "../features/player/PlayerStatsService.hpp"
 #include "../features/player/SelfOnlineService.hpp"
@@ -16,6 +17,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <string>
 
@@ -23,6 +25,15 @@ namespace TutonesV2::UI
 {
     namespace
     {
+        template<std::size_t Size>
+        void CopySettingText(char (&destination)[Size], const std::string& source) noexcept
+        {
+            static_assert(Size > 0);
+            std::memset(destination, 0, Size);
+            const auto count = std::min(source.size(), Size - 1);
+            std::memcpy(destination, source.data(), count);
+        }
+
         void PlannedSection(const char* title, const char* description, const char* backend) noexcept
         {
             ImGui::SeparatorText(title);
@@ -48,6 +59,7 @@ namespace TutonesV2::UI
             const auto statsState = stats.Snapshot();
 
             static std::string status{"Ready"};
+            static bool settingsLoaded{};
             static int health{200};
             static int armor{100};
             static int wantedLevel{};
@@ -56,6 +68,20 @@ namespace TutonesV2::UI
             static int drawable{};
             static int texture{};
             static int palette{};
+
+            if (!settingsLoaded)
+            {
+                const auto saved = Config::SettingsService::Get().Snapshot();
+                health = saved.selfHealth;
+                armor = saved.selfArmor;
+                wantedLevel = saved.selfWantedLevel;
+                CopySettingText(modelName, saved.selfPedModel);
+                component = saved.selfComponent;
+                drawable = saved.selfDrawable;
+                texture = saved.selfTexture;
+                palette = saved.selfPalette;
+                settingsLoaded = true;
+            }
 
             static std::uint64_t lastStatsRevision{};
             static int rank{1};
@@ -115,7 +141,13 @@ namespace TutonesV2::UI
                 wantedLevel = std::clamp(wantedLevel, 0, 5);
 
                 ImGui::SetNextItemWidth(130.0f);
-                ImGui::InputInt("Health", &health, 10, 50);
+                if (ImGui::InputInt("Health", &health, 10, 50))
+                {
+                    health = std::max(0, health);
+                    Config::SettingsService::Get().Update([health](Config::MenuSettings& settings) {
+                        settings.selfHealth = health;
+                    });
+                }
                 ImGui::SameLine();
                 if (ImGui::Button("Set Health"))
                     status = player.QueueSetHealth(health) ? "Set Health queued" : "Set Health rejected";
@@ -124,7 +156,13 @@ namespace TutonesV2::UI
                     status = player.QueueHeal() ? "Full Heal queued" : "Full Heal rejected";
 
                 ImGui::SetNextItemWidth(130.0f);
-                ImGui::InputInt("Armor", &armor, 10, 25);
+                if (ImGui::InputInt("Armor", &armor, 10, 25))
+                {
+                    armor = std::clamp(armor, 0, 100);
+                    Config::SettingsService::Get().Update([armor](Config::MenuSettings& settings) {
+                        settings.selfArmor = armor;
+                    });
+                }
                 ImGui::SameLine();
                 if (ImGui::Button("Set Armor"))
                     status = player.QueueSetArmor(armor) ? "Set Armor queued" : "Set Armor rejected";
@@ -141,7 +179,13 @@ namespace TutonesV2::UI
                     status = player.SetEveryoneIgnore(everyoneIgnore) ? "Everyone Ignore updated" : "Everyone Ignore request rejected";
 
                 ImGui::SetNextItemWidth(130.0f);
-                ImGui::InputInt("Wanted Level", &wantedLevel, 1, 1);
+                if (ImGui::InputInt("Wanted Level", &wantedLevel, 1, 1))
+                {
+                    wantedLevel = std::clamp(wantedLevel, 0, 5);
+                    Config::SettingsService::Get().Update([wantedLevel](Config::MenuSettings& settings) {
+                        settings.selfWantedLevel = wantedLevel;
+                    });
+                }
                 ImGui::SameLine();
                 if (ImGui::Button("Apply Wanted"))
                     status = player.QueueSetWantedLevel(wantedLevel) ? "Wanted level queued" : "Wanted-level request rejected";
@@ -200,7 +244,13 @@ namespace TutonesV2::UI
             if (ImGui::CollapsingHeader("Appearance / Model"))
             {
                 ImGui::SetNextItemWidth(240.0f);
-                ImGui::InputText("Ped Model", modelName, sizeof(modelName));
+                if (ImGui::InputText("Ped Model", modelName, sizeof(modelName)))
+                {
+                    const std::string value(modelName);
+                    Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                        settings.selfPedModel = value;
+                    });
+                }
                 ImGui::SameLine();
                 ImGui::BeginDisabled(player.ModelLoadPending());
                 if (ImGui::Button("Load Ped Model"))
@@ -213,13 +263,37 @@ namespace TutonesV2::UI
                 palette = std::clamp(palette, 0, 3);
 
                 ImGui::SetNextItemWidth(100.0f);
-                ImGui::InputInt("Component", &component, 1, 1);
+                if (ImGui::InputInt("Component", &component, 1, 1))
+                {
+                    component = std::clamp(component, 0, 11);
+                    Config::SettingsService::Get().Update([component](Config::MenuSettings& settings) {
+                        settings.selfComponent = component;
+                    });
+                }
                 ImGui::SetNextItemWidth(100.0f);
-                ImGui::InputInt("Drawable", &drawable, 1, 5);
+                if (ImGui::InputInt("Drawable", &drawable, 1, 5))
+                {
+                    drawable = std::max(0, drawable);
+                    Config::SettingsService::Get().Update([drawable](Config::MenuSettings& settings) {
+                        settings.selfDrawable = drawable;
+                    });
+                }
                 ImGui::SetNextItemWidth(100.0f);
-                ImGui::InputInt("Texture", &texture, 1, 5);
+                if (ImGui::InputInt("Texture", &texture, 1, 5))
+                {
+                    texture = std::max(0, texture);
+                    Config::SettingsService::Get().Update([texture](Config::MenuSettings& settings) {
+                        settings.selfTexture = texture;
+                    });
+                }
                 ImGui::SetNextItemWidth(100.0f);
-                ImGui::InputInt("Palette", &palette, 1, 1);
+                if (ImGui::InputInt("Palette", &palette, 1, 1))
+                {
+                    palette = std::clamp(palette, 0, 3);
+                    Config::SettingsService::Get().Update([palette](Config::MenuSettings& settings) {
+                        settings.selfPalette = palette;
+                    });
+                }
 
                 if (ImGui::Button("Apply Component"))
                     status = player.QueueSetComponent(component, drawable, texture, palette)
@@ -353,7 +427,16 @@ namespace TutonesV2::UI
             auto& service = Features::Weapon::WeaponService::Get();
             const bool nativeReady = Game::GameRuntime::Get().NativeReady();
             static std::string status{"Ready"};
+            static bool settingsLoaded{};
             static char weaponName[64]{"WEAPON_CARBINERIFLE"};
+
+            if (!settingsLoaded)
+            {
+                CopySettingText(
+                    weaponName,
+                    Config::SettingsService::Get().Snapshot().weaponName);
+                settingsLoaded = true;
+            }
 
             ImGui::SeparatorText("Weapon Runtime");
             ImGui::BulletText("Native runtime: %s", nativeReady ? "READY" : "WAITING");
@@ -408,7 +491,13 @@ namespace TutonesV2::UI
                 status = service.QueueMaxAmmo() ? "Max Ammo queued" : "Max Ammo rejected";
 
             ImGui::SetNextItemWidth(260.0f);
-            ImGui::InputText("Weapon Name", weaponName, sizeof(weaponName));
+            if (ImGui::InputText("Weapon Name", weaponName, sizeof(weaponName)))
+            {
+                const std::string value(weaponName);
+                Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                    settings.weaponName = value;
+                });
+            }
             ImGui::SameLine();
             if (ImGui::Button("Give Weapon"))
                 status = service.QueueGiveWeapon(weaponName) ? "Give Weapon queued" : "Give Weapon rejected";
@@ -422,17 +511,43 @@ namespace TutonesV2::UI
             auto& service = Features::Vehicle::VehicleService::Get();
             const auto snapshot = service.Snapshot();
             const bool nativeReady = Game::GameRuntime::Get().NativeReady();
+            static bool settingsLoaded{};
             static char modelName[64]{"adder"};
             static bool enterVehicle = true;
             static bool networked = true;
 
+            if (!settingsLoaded)
+            {
+                const auto saved = Config::SettingsService::Get().Snapshot();
+                CopySettingText(modelName, saved.vehicleModel);
+                enterVehicle = saved.vehicleEnterAfterSpawn;
+                networked = saved.vehicleNetworked;
+                settingsLoaded = true;
+            }
+
             ImGui::SeparatorText("Vehicle Spawner");
             ImGui::BeginDisabled(!service.IsReady() || !nativeReady || snapshot.busy);
             ImGui::SetNextItemWidth(260.0f);
-            ImGui::InputText("Vehicle Model", modelName, sizeof(modelName));
-            ImGui::Checkbox("Enter spawned vehicle", &enterVehicle);
+            if (ImGui::InputText("Vehicle Model", modelName, sizeof(modelName)))
+            {
+                const std::string value(modelName);
+                Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                    settings.vehicleModel = value;
+                });
+            }
+            if (ImGui::Checkbox("Enter spawned vehicle", &enterVehicle))
+            {
+                Config::SettingsService::Get().Update([enterVehicle](Config::MenuSettings& settings) {
+                    settings.vehicleEnterAfterSpawn = enterVehicle;
+                });
+            }
             ImGui::SameLine();
-            ImGui::Checkbox("Networked / persistent", &networked);
+            if (ImGui::Checkbox("Networked / persistent", &networked))
+            {
+                Config::SettingsService::Get().Update([networked](Config::MenuSettings& settings) {
+                    settings.vehicleNetworked = networked;
+                });
+            }
             if (ImGui::Button("Spawn Vehicle"))
                 static_cast<void>(service.QueueSpawn(modelName, enterVehicle, networked));
             ImGui::EndDisabled();
@@ -457,9 +572,21 @@ namespace TutonesV2::UI
             const auto snapshot = service.Snapshot();
             const bool nativeReady = Game::GameRuntime::Get().NativeReady();
 
+            static bool settingsLoaded{};
             static float coords[3]{0.0f, 0.0f, 0.0f};
             static bool resolveGround = true;
             static float directionalDistance = 5.0f;
+
+            if (!settingsLoaded)
+            {
+                const auto saved = Config::SettingsService::Get().Snapshot();
+                coords[0] = saved.teleportX;
+                coords[1] = saved.teleportY;
+                coords[2] = saved.teleportZ;
+                resolveGround = saved.teleportResolveGround;
+                directionalDistance = saved.teleportDirectionalDistance;
+                settingsLoaded = true;
+            }
 
             ImGui::SeparatorText("YimMenuV2 Teleport");
             ImGui::TextDisabled("Waypoint Z-resolution mirrors YimMenuV2: collision request, 20 yielded ground attempts, water check, then approximate-height fallback.");
@@ -482,7 +609,12 @@ namespace TutonesV2::UI
 
             ImGui::SeparatorText("Directional Teleport");
             ImGui::SetNextItemWidth(180.0f);
-            ImGui::SliderFloat("Distance", &directionalDistance, 1.0f, 100.0f, "%.1f");
+            if (ImGui::SliderFloat("Distance", &directionalDistance, 1.0f, 100.0f, "%.1f"))
+            {
+                Config::SettingsService::Get().Update([directionalDistance](Config::MenuSettings& settings) {
+                    settings.teleportDirectionalDistance = directionalDistance;
+                });
+            }
 
             ImGui::BeginDisabled(!service.IsReady() || !nativeReady || snapshot.pending);
             if (ImGui::Button("Forward"))
@@ -504,8 +636,23 @@ namespace TutonesV2::UI
                 static_cast<void>(service.QueueDirectional(0.0f, 0.0f, -directionalDistance));
 
             ImGui::SeparatorText("Coordinates");
-            ImGui::InputFloat3("XYZ", coords);
-            ImGui::Checkbox("Resolve ground / water like YimMenuV2", &resolveGround);
+            if (ImGui::InputFloat3("XYZ", coords))
+            {
+                const float x = coords[0];
+                const float y = coords[1];
+                const float z = coords[2];
+                Config::SettingsService::Get().Update([x, y, z](Config::MenuSettings& settings) {
+                    settings.teleportX = x;
+                    settings.teleportY = y;
+                    settings.teleportZ = z;
+                });
+            }
+            if (ImGui::Checkbox("Resolve ground / water like YimMenuV2", &resolveGround))
+            {
+                Config::SettingsService::Get().Update([resolveGround](Config::MenuSettings& settings) {
+                    settings.teleportResolveGround = resolveGround;
+                });
+            }
             if (ImGui::Button("Teleport to Coordinates"))
                 static_cast<void>(service.QueueCoordinates(coords[0], coords[1], coords[2], resolveGround));
             ImGui::EndDisabled();
@@ -537,13 +684,66 @@ namespace TutonesV2::UI
             auto& backend = Backend::BackendHub::Get();
 
             ImGui::SeparatorText("Appearance");
-            ImGui::SliderFloat("UI scale", &theme.Scale(), 0.85f, 1.35f, "%.2fx");
-            ImGui::SliderFloat("Window opacity", &theme.Opacity(), 0.70f, 1.00f, "%.2f");
-            ImGui::ColorEdit3("Accent", theme.AccentColor(), ImGuiColorEditFlags_NoInputs);
-            ImGui::Checkbox("Show status bar", &theme.ShowStatusBar());
+            if (ImGui::SliderFloat("UI scale", &theme.Scale(), 0.85f, 1.35f, "%.2fx"))
+            {
+                const float value = theme.Scale();
+                Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                    settings.scale = value;
+                });
+            }
+            if (ImGui::SliderFloat("Window opacity", &theme.Opacity(), 0.70f, 1.00f, "%.2f"))
+            {
+                const float value = theme.Opacity();
+                Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                    settings.opacity = value;
+                });
+            }
+            if (ImGui::ColorEdit3("Accent", theme.AccentColor(), ImGuiColorEditFlags_NoInputs))
+            {
+                const auto* accent = theme.AccentColor();
+                const float r = accent[0];
+                const float g = accent[1];
+                const float b = accent[2];
+                Config::SettingsService::Get().Update([r, g, b](Config::MenuSettings& settings) {
+                    settings.accent[0] = r;
+                    settings.accent[1] = g;
+                    settings.accent[2] = b;
+                    settings.accent[3] = 1.0f;
+                });
+            }
+            if (ImGui::Checkbox("Show status bar", &theme.ShowStatusBar()))
+            {
+                const bool value = theme.ShowStatusBar();
+                Config::SettingsService::Get().Update([value](Config::MenuSettings& settings) {
+                    settings.showStatusBar = value;
+                });
+            }
 
             if (ImGui::Button("Reset appearance"))
+            {
                 theme.Reset();
+                const auto* accent = theme.AccentColor();
+                const float opacity = theme.Opacity();
+                const float scale = theme.Scale();
+                const bool showStatusBar = theme.ShowStatusBar();
+                const float r = accent[0];
+                const float g = accent[1];
+                const float b = accent[2];
+                Config::SettingsService::Get().Update(
+                    [opacity, scale, showStatusBar, r, g, b](Config::MenuSettings& settings) {
+                        settings.opacity = opacity;
+                        settings.scale = scale;
+                        settings.showStatusBar = showStatusBar;
+                        settings.accent = {r, g, b, 1.0f};
+                    });
+            }
+
+            ImGui::SameLine();
+            if (ImGui::Button("Save Settings Now"))
+                static_cast<void>(Config::SettingsService::Get().SaveNow());
+
+            const auto settingsPath = Config::SettingsService::Get().Path().string();
+            ImGui::TextDisabled("Config: %s", settingsPath.c_str());
 
             ImGui::Spacing();
             ImGui::SeparatorText("Runtime");
