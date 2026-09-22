@@ -11,6 +11,7 @@
 #include "../features/online/OnlineStatusService.hpp"
 #include "../features/online/OnlinePlayerService.hpp"
 #include "../features/online/RequestServicesService.hpp"
+#include "../features/parity/ParityGlobalsService.hpp"
 #include "../features/utility/UtilityService.hpp"
 #include "../features/vehicle/VehicleService.hpp"
 #include "../features/weapon/WeaponService.hpp"
@@ -1599,12 +1600,163 @@ namespace TutonesV2::UI
 
         void RenderBusiness() noexcept
         {
-            ImGui::SeparatorText("V1 Business Hub");
-            ImGui::TextWrapped("Nightclub, Special Cargo, Bunker, Motorcycle Club, Acid Lab, Hangar, Vehicle Cargo, Agency, Bail Office, Garment Factory and Money Fronts are being ported onto the V2 script/global runtime.");
+            auto& parity = Features::Parity::ParityGlobalsService::Get();
+            const auto parityState = parity.Snapshot();
+
+            ImGui::SeparatorText("Instant Resupply");
+            ImGui::TextWrapped(
+                "V1 Enhanced Global_1673820 resupply helpers. These are GTA Online/session gated and execute on the V2 game scheduler.");
+
+            constexpr std::array<const char*, 7> resupplyLabels{{
+                "MC Slot 0",
+                "MC Slot 1",
+                "MC Slot 2",
+                "MC Slot 3",
+                "MC Slot 4",
+                "Bunker",
+                "Acid Lab",
+            }};
+
+            ImGui::BeginDisabled(parityState.pending);
+            for (std::size_t i = 0; i < resupplyLabels.size(); ++i)
+            {
+                if (i != 0 && (i % 3) != 0)
+                    ImGui::SameLine();
+
+                if (ImGui::Button(
+                        resupplyLabels[i],
+                        ImVec2(i < 5 ? 118.0f : 140.0f, 28.0f)))
+                {
+                    static_cast<void>(
+                        parity.QueueInstantResupply(
+                            static_cast<Features::Parity::InstantResupplyTarget>(i)));
+                }
+            }
+            ImGui::EndDisabled();
+
+            ImGui::SeparatorText("Bunker");
+            static Features::Parity::BunkerProfile bunkerProfile{};
+            bool fastProduction = parityState.bunkerFastProduction;
+
+            ImGui::BeginDisabled(parityState.pending);
+            if (ImGui::Checkbox("Fast Bunker Production (1 second)", &fastProduction))
+                static_cast<void>(parity.QueueBunkerFastProduction(fastProduction));
+
+            ImGui::SetNextItemWidth(160.0f);
+            ImGui::InputInt("Product Value", &bunkerProfile.productValue, 100, 1000);
+            ImGui::SetNextItemWidth(160.0f);
+            ImGui::InputFloat("Near Sale Multiplier", &bunkerProfile.nearSaleMultiplier, 0.1f, 0.5f, "%.2f");
+            ImGui::SetNextItemWidth(160.0f);
+            ImGui::InputFloat("Far Sale Multiplier", &bunkerProfile.farSaleMultiplier, 0.1f, 0.5f, "%.2f");
+            ImGui::SetNextItemWidth(160.0f);
+            ImGui::InputFloat("High Demand Bonus", &bunkerProfile.highDemandBonus, 0.1f, 0.5f, "%.2f");
+            ImGui::SetNextItemWidth(160.0f);
+            ImGui::InputFloat("High Demand Max Bonus", &bunkerProfile.highDemandMaxBonus, 0.5f, 1.0f, "%.2f");
+            ImGui::SetNextItemWidth(180.0f);
+            ImGui::InputInt("Manufacturing Cycle (ms)", &bunkerProfile.manufacturingProductionMs, 1000, 10000);
+            ImGui::SetNextItemWidth(180.0f);
+            ImGui::InputInt("Research Cycle (ms)", &bunkerProfile.researchProductionMs, 1000, 10000);
+
+            if (ImGui::Button("Apply Bunker V1 Profile", ImVec2(-1.0f, 30.0f)))
+                static_cast<void>(parity.QueueBunkerProfile(bunkerProfile));
+            ImGui::EndDisabled();
+
+            ImGui::SeparatorText("Special Cargo");
+            static int sourcingAmount{3};
+            static int cargoType{-1};
+            static int specialItem{};
+            static bool specialAvailable{};
+            static int buyCooldown{};
+            static int sellCooldown{};
+            static int crateTier{};
+            static int cratePrice{};
+            static int uniqueItem{2};
+
+            ImGui::BeginDisabled(parityState.pending);
+            ImGui::SetNextItemWidth(140.0f);
+            ImGui::InputInt("Source Amount", &sourcingAmount, 1, 10);
+            sourcingAmount = std::clamp(sourcingAmount, 1, 111);
+
+            ImGui::SetNextItemWidth(140.0f);
+            ImGui::InputInt("Cargo Type", &cargoType, 1, 1);
+            cargoType = std::clamp(cargoType, -1, 10);
+
+            ImGui::SetNextItemWidth(140.0f);
+            ImGui::InputInt("Special Item", &specialItem, 1, 1);
+            specialItem = std::clamp(specialItem, 0, 5);
+            ImGui::Checkbox("Special Cargo Available", &specialAvailable);
+
+            if (ImGui::Button("Apply Sourcing Settings", ImVec2(-1.0f, 28.0f)))
+            {
+                static_cast<void>(
+                    parity.QueueSpecialCargoSourcing(
+                        sourcingAmount,
+                        cargoType,
+                        specialItem,
+                        specialAvailable));
+            }
+
+            ImGui::SetNextItemWidth(160.0f);
+            ImGui::InputInt("Buy Cooldown (ms)", &buyCooldown, 1000, 10000);
+            ImGui::SetNextItemWidth(160.0f);
+            ImGui::InputInt("Sell Cooldown (ms)", &sellCooldown, 1000, 10000);
+            buyCooldown = std::max(0, buyCooldown);
+            sellCooldown = std::max(0, sellCooldown);
+
+            if (ImGui::Button("Apply Cargo Cooldowns"))
+                static_cast<void>(parity.QueueSpecialCargoCooldowns(buyCooldown, sellCooldown));
+
+            ImGui::SetNextItemWidth(140.0f);
+            ImGui::InputInt("Crate Price Tier", &crateTier, 1, 1);
+            crateTier = std::clamp(crateTier, 0, 20);
+            ImGui::SetNextItemWidth(160.0f);
+            ImGui::InputInt("Crate Price", &cratePrice, 1000, 10000);
+            cratePrice = std::max(0, cratePrice);
+
+            if (ImGui::Button("Apply Crate Price"))
+                static_cast<void>(parity.QueueSpecialCargoCratePrice(crateTier, cratePrice));
+
+            constexpr std::array<int, 6> uniqueItems{{2, 4, 6, 7, 8, 9}};
+            int uniqueIndex{};
+            for (std::size_t i = 0; i < uniqueItems.size(); ++i)
+            {
+                if (uniqueItems[i] == uniqueItem)
+                {
+                    uniqueIndex = static_cast<int>(i);
+                    break;
+                }
+            }
+
+            constexpr std::array<const char*, 6> uniqueLabels{{
+                "Ornamental Egg (2)",
+                "Golden Minigun (4)",
+                "Large Diamond (6)",
+                "Rare Hide (7)",
+                "Film Reel (8)",
+                "Pocket Watch (9)",
+            }};
+
+            ImGui::SetNextItemWidth(230.0f);
+            if (ImGui::Combo(
+                    "Unique Cargo",
+                    &uniqueIndex,
+                    uniqueLabels.data(),
+                    static_cast<int>(uniqueLabels.size())))
+            {
+                uniqueItem = uniqueItems[static_cast<std::size_t>(uniqueIndex)];
+            }
+
+            if (ImGui::Button("Enable Unique Cargo"))
+                static_cast<void>(parity.QueueSpecialCargoUniqueItem(uniqueItem));
+
+            ImGui::EndDisabled();
+
             ImGui::Spacing();
-            ImGui::BulletText("Business state backend: staging");
-            ImGui::BulletText("Globals/script writes: readiness-gated");
-            ImGui::BulletText("Vehicle Cargo actions: next backend group");
+            ImGui::TextDisabled("V1 globals status: %s", parityState.message.c_str());
+
+            ImGui::SeparatorText("Next V1 Business Groups");
+            ImGui::TextWrapped(
+                "Nightclub, Motorcycle Club, Acid Lab stock fill, Hangar, Vehicle Cargo, Agency, Bail Office, Garment Factory and Money Fronts require the shared V1 script/stat layer. That layer is the next parity foundation being moved into V2.");
         }
 
         void RenderProtections() noexcept
@@ -1761,9 +1913,19 @@ namespace TutonesV2::UI
 
             ImGui::TextDisabled("%s", state.message.c_str());
 
+            auto& parity = Features::Parity::ParityGlobalsService::Get();
+            const auto parityState = parity.Snapshot();
+
+            ImGui::SeparatorText("V1 Recovery Actions");
+            ImGui::BeginDisabled(parityState.pending);
+            if (ImGui::Button("Trigger Good Behavior Bonus ($2,000)", ImVec2(-1.0f, 30.0f)))
+                static_cast<void>(parity.QueueGoodBehaviorBonus());
+            ImGui::EndDisabled();
+            ImGui::TextDisabled("V1 recovery globals: %s", parityState.message.c_str());
+
             PlannedSection(
                 "Businesses",
-                "V1 business tools (Nightclub, Bunker, Special Cargo, Vehicle Cargo and more) are the next globals-backed Recovery pass.",
+                "Bunker tuning, Instant Resupply, Special Cargo sourcing/cooldowns/pricing and unique cargo are now active in Businesses. More V1 recovery systems are being moved onto the shared script/stat layer.",
                 "Recovery / Script Globals");
             PlannedSection(
                 "Heists",
