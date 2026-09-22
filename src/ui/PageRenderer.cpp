@@ -1444,6 +1444,56 @@ namespace TutonesV2::UI
                 state.densityLoopRunning ? "ACTIVE" : "IDLE",
                 state.worldLoopRunning ? "ACTIVE" : "IDLE");
             ImGui::TextWrapped("World status: %s", state.message.c_str());
+
+            ImGui::Spacing();
+            if (ImGui::CollapsingHeader("Teleport", ImGuiTreeNodeFlags_DefaultOpen))
+                RenderTeleport();
+        }
+
+        void RenderBusiness() noexcept
+        {
+            ImGui::SeparatorText("V1 Business Hub");
+            ImGui::TextWrapped("Nightclub, Special Cargo, Bunker, Motorcycle Club, Acid Lab, Hangar, Vehicle Cargo, Agency, Bail Office, Garment Factory and Money Fronts are being ported onto the V2 script/global runtime.");
+            ImGui::Spacing();
+            ImGui::BulletText("Business state backend: staging");
+            ImGui::BulletText("Globals/script writes: readiness-gated");
+            ImGui::BulletText("Vehicle Cargo actions: next backend group");
+        }
+
+        void RenderProtections() noexcept
+        {
+            ImGui::SeparatorText("V1 Protections");
+            ImGui::TextWrapped("Network-message and scripted-event protection controls are being moved to the V2 hook manager with explicit pattern/readiness validation.");
+            ImGui::Spacing();
+            ImGui::BulletText("Malformed packet protection");
+            ImGui::BulletText("Known crash filters");
+            ImGui::BulletText("Forced-leave filters");
+            ImGui::BulletText("Network/script event blocking");
+        }
+
+        void RenderTools() noexcept
+        {
+            ImGui::SeparatorText("V1 Tools");
+            ImGui::TextWrapped("Workshop, Vehicle & Camera, World Tools and Diagnostics are being consolidated here using the V2 native registry and scheduler.");
+            ImGui::Spacing();
+            ImGui::BulletText("Weapon components / tints");
+            ImGui::BulletText("Props / outfits / animations");
+            ImGui::BulletText("Freecam / advanced vehicle natives");
+            ImGui::BulletText("Blips / PTFX / bodyguards / IPL / interiors");
+            ImGui::BulletText("Native / tunable / script diagnostics");
+        }
+
+        void RenderHeists() noexcept
+        {
+            ImGui::SeparatorText("V1 Heist Hub");
+            ImGui::TextWrapped("Apartment, Doomsday, Diamond Casino, Cayo Perico, Auto Shop, Salvage Yard and related Enhanced utilities are being moved onto the V2 script/global layer.");
+            ImGui::Spacing();
+            ImGui::BulletText("Apartment Heists");
+            ImGui::BulletText("Doomsday Heist");
+            ImGui::BulletText("Diamond Casino Heist");
+            ImGui::BulletText("Cayo Perico");
+            ImGui::BulletText("Auto Shop Contracts / Exotic Exports");
+            ImGui::BulletText("Salvage Yard / Tow Truck");
         }
 
         void RenderRecovery() noexcept
@@ -1685,11 +1735,14 @@ namespace TutonesV2::UI
         case MenuPage::Weapons: RenderWeapons(); break;
         case MenuPage::Vehicle: RenderVehicle(); break;
         case MenuPage::Online: RenderOnline(); break;
-        case MenuPage::Teleport: RenderTeleport(); break;
         case MenuPage::World: RenderWorld(); break;
+        case MenuPage::Business: RenderBusiness(); break;
         case MenuPage::Recovery: RenderRecovery(); break;
-        case MenuPage::Misc: RenderMisc(); break;
+        case MenuPage::Protections: RenderProtections(); break;
         case MenuPage::Settings: RenderSettings(); break;
+        case MenuPage::Misc: RenderMisc(); break;
+        case MenuPage::Tools: RenderTools(); break;
+        case MenuPage::Heists: RenderHeists(); break;
         }
     }
 }
