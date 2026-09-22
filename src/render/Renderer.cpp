@@ -145,6 +145,11 @@ namespace TutonesV2::Render
                     pixels.data());
             }
 
+            converter.Reset();
+            frame.Reset();
+            decoder.Reset();
+            factory.Reset();
+
             if (uninitialize)
                 ::CoUninitialize();
 
