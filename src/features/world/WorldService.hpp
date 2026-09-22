@@ -2,8 +2,10 @@
 
 #include <array>
 #include <atomic>
+#include <functional>
 #include <mutex>
 #include <string>
+#include <utility>
 
 namespace TutonesV2::Features::World
 {
