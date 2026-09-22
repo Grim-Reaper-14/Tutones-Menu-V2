@@ -13,14 +13,14 @@ namespace TutonesV2::Game::Stats
 {
     namespace Detail
     {
-        [[nodiscard]] inline char LowerAscii(char value) noexcept
+        [[nodiscard]] constexpr char LowerAscii(char value) noexcept
         {
             if (value >= 'A' && value <= 'Z')
                 return static_cast<char>(value - 'A' + 'a');
             return value;
         }
 
-        [[nodiscard]] inline std::uint32_t Joaat(std::string_view text) noexcept
+        [[nodiscard]] constexpr std::uint32_t Joaat(std::string_view text) noexcept
         {
             std::uint32_t hash{};
             for (char value : text)
