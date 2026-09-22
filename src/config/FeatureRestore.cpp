@@ -29,6 +29,7 @@ namespace TutonesV2::Config
         {
             MenuSettings settings{};
             int warmupTicks{};
+            int waitTicks{};
             int stage{};
         };
 
@@ -91,16 +92,18 @@ namespace TutonesV2::Config
             }
 
             // Do not restore gameplay state on the landing/loading screen.
-            // Require a real player ped and then give GTA a short scheduler warmup.
-            if (!PlayerReady() || state->warmupTicks < 120)
+            // Require a real player ped for 120 consecutive scheduler ticks.
+            ++state->waitTicks;
+            if (!PlayerReady())
             {
-                ++state->warmupTicks;
-                if (state->warmupTicks == 1)
+                state->warmupTicks = 0;
+
+                if (state->waitTicks == 1)
                     Core::Logger::Get().Info(
                         "settings",
                         "Saved feature restore waiting for a stable player ped");
 
-                if (state->warmupTicks > 900)
+                if (state->waitTicks > 1800)
                 {
                     Core::Logger::Get().Warn(
                         "settings",
@@ -108,6 +111,19 @@ namespace TutonesV2::Config
                     g_RestoreScheduled.store(false, std::memory_order_release);
                     return;
                 }
+
+                if (!runtime.Enqueue(*tick))
+                    g_RestoreScheduled.store(false, std::memory_order_release);
+                return;
+            }
+
+            ++state->warmupTicks;
+            if (state->warmupTicks < 120)
+            {
+                if (state->warmupTicks == 1)
+                    Core::Logger::Get().Info(
+                        "settings",
+                        "Player ped detected; delaying saved feature restore for 120 stable scheduler ticks");
 
                 if (!runtime.Enqueue(*tick))
                     g_RestoreScheduled.store(false, std::memory_order_release);
