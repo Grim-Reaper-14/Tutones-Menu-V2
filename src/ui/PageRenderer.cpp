@@ -124,17 +124,35 @@ namespace TutonesV2::UI
                 bool noRagdoll = player.NoRagdoll();
 
                 if (ImGui::Checkbox("God Mode", &godMode))
+                {
                     status = player.SetGodMode(godMode) ? "God Mode updated" : "God Mode request rejected";
+                    Config::SettingsService::Get().Update([godMode](Config::MenuSettings& settings) { settings.selfGodMode = godMode; });
+                }
                 if (ImGui::Checkbox("Bulletproof / Semi-God", &bulletproof))
+                {
                     status = player.SetBulletproof(bulletproof) ? "Bulletproof updated" : "Bulletproof request rejected";
+                    Config::SettingsService::Get().Update([bulletproof](Config::MenuSettings& settings) { settings.selfBulletproof = bulletproof; });
+                }
                 if (ImGui::Checkbox("Invisible", &invisible))
+                {
                     status = player.SetInvisible(invisible) ? "Invisible updated" : "Invisible request rejected";
+                    Config::SettingsService::Get().Update([invisible](Config::MenuSettings& settings) { settings.selfInvisible = invisible; });
+                }
                 if (ImGui::Checkbox("Disable Critical Hits", &disableCriticalHits))
+                {
                     status = player.SetDisableCriticalHits(disableCriticalHits) ? "Critical hits updated" : "Critical-hit request rejected";
+                    Config::SettingsService::Get().Update([disableCriticalHits](Config::MenuSettings& settings) { settings.selfDisableCriticalHits = disableCriticalHits; });
+                }
                 if (ImGui::Checkbox("Keep Player Clean", &keepClean))
+                {
                     status = player.SetKeepPlayerClean(keepClean) ? "Keep Player Clean updated" : "Keep Player Clean request rejected";
+                    Config::SettingsService::Get().Update([keepClean](Config::MenuSettings& settings) { settings.selfKeepClean = keepClean; });
+                }
                 if (ImGui::Checkbox("No Ragdoll", &noRagdoll))
+                {
                     status = player.SetNoRagdoll(noRagdoll) ? "No Ragdoll updated" : "No Ragdoll request rejected";
+                    Config::SettingsService::Get().Update([noRagdoll](Config::MenuSettings& settings) { settings.selfNoRagdoll = noRagdoll; });
+                }
             }
 
             if (ImGui::CollapsingHeader("Health, Armor & Wanted"))
@@ -177,11 +195,20 @@ namespace TutonesV2::UI
                 bool everyoneIgnore = player.EveryoneIgnore();
 
                 if (ImGui::Checkbox("Never Wanted", &neverWanted))
+                {
                     status = player.SetNeverWanted(neverWanted) ? "Never Wanted updated" : "Never Wanted request rejected";
+                    Config::SettingsService::Get().Update([neverWanted](Config::MenuSettings& settings) { settings.selfNeverWanted = neverWanted; });
+                }
                 if (ImGui::Checkbox("Police Ignore", &policeIgnore))
+                {
                     status = player.SetPoliceIgnore(policeIgnore) ? "Police Ignore updated" : "Police Ignore request rejected";
+                    Config::SettingsService::Get().Update([policeIgnore](Config::MenuSettings& settings) { settings.selfPoliceIgnore = policeIgnore; });
+                }
                 if (ImGui::Checkbox("Everyone Ignore", &everyoneIgnore))
+                {
                     status = player.SetEveryoneIgnore(everyoneIgnore) ? "Everyone Ignore updated" : "Everyone Ignore request rejected";
+                    Config::SettingsService::Get().Update([everyoneIgnore](Config::MenuSettings& settings) { settings.selfEveryoneIgnore = everyoneIgnore; });
+                }
 
                 ImGui::SetNextItemWidth(130.0f);
                 if (ImGui::InputInt("Wanted Level", &wantedLevel, 1, 1))
@@ -218,22 +245,46 @@ namespace TutonesV2::UI
                 float swimMultiplier = player.SwimMultiplier();
 
                 if (ImGui::Checkbox("Super Jump", &superJump))
+                {
                     status = player.SetSuperJump(superJump) ? "Super Jump updated" : "Super Jump request rejected";
+                    Config::SettingsService::Get().Update([superJump](Config::MenuSettings& settings) { settings.selfSuperJump = superJump; });
+                }
                 if (ImGui::Checkbox("Infinite Stamina", &infiniteStamina))
+                {
                     status = player.SetInfiniteStamina(infiniteStamina) ? "Infinite Stamina updated" : "Infinite Stamina request rejected";
+                    Config::SettingsService::Get().Update([infiniteStamina](Config::MenuSettings& settings) { settings.selfInfiniteStamina = infiniteStamina; });
+                }
                 if (ImGui::Checkbox("Stand On Vehicles", &standOnVehicles))
+                {
                     status = player.SetStandOnVehicles(standOnVehicles) ? "Stand On Vehicles updated" : "Stand On Vehicles request rejected";
+                    Config::SettingsService::Get().Update([standOnVehicles](Config::MenuSettings& settings) { settings.selfStandOnVehicles = standOnVehicles; });
+                }
                 if (ImGui::Checkbox("Disable Action Mode", &disableActionMode))
+                {
                     status = player.SetDisableActionMode(disableActionMode) ? "Disable Action Mode updated" : "Disable Action Mode rejected";
+                    Config::SettingsService::Get().Update([disableActionMode](Config::MenuSettings& settings) { settings.selfDisableActionMode = disableActionMode; });
+                }
                 if (ImGui::Checkbox("Aqua Lungs", &aquaLungs))
+                {
                     status = player.SetAquaLungs(aquaLungs) ? "Aqua Lungs updated" : "Aqua Lungs request rejected";
+                    Config::SettingsService::Get().Update([aquaLungs](Config::MenuSettings& settings) { settings.selfAquaLungs = aquaLungs; });
+                }
                 if (ImGui::Checkbox("Infinite Oxygen", &infiniteOxygen))
+                {
                     status = player.SetInfiniteOxygen(infiniteOxygen) ? "Infinite Oxygen updated" : "Infinite Oxygen request rejected";
+                    Config::SettingsService::Get().Update([infiniteOxygen](Config::MenuSettings& settings) { settings.selfInfiniteOxygen = infiniteOxygen; });
+                }
 
                 if (ImGui::SliderFloat("Run / Sprint", &runMultiplier, 1.0f, 1.49f, "%.2fx"))
+                {
                     status = player.SetRunMultiplier(runMultiplier) ? "Run multiplier updated" : "Run multiplier rejected";
+                    Config::SettingsService::Get().Update([runMultiplier](Config::MenuSettings& settings) { settings.selfRunMultiplier = runMultiplier; });
+                }
                 if (ImGui::SliderFloat("Swim", &swimMultiplier, 1.0f, 1.49f, "%.2fx"))
+                {
                     status = player.SetSwimMultiplier(swimMultiplier) ? "Swim multiplier updated" : "Swim multiplier rejected";
+                    Config::SettingsService::Get().Update([swimMultiplier](Config::MenuSettings& settings) { settings.selfSwimMultiplier = swimMultiplier; });
+                }
             }
 
             if (ImGui::CollapsingHeader("Utilities"))
@@ -242,9 +293,15 @@ namespace TutonesV2::UI
                 bool mobileRadio = player.MobileRadio();
 
                 if (ImGui::Checkbox("Infinite Parachutes", &infiniteParachutes))
+                {
                     status = player.SetInfiniteParachutes(infiniteParachutes) ? "Infinite Parachutes updated" : "Infinite Parachutes rejected";
+                    Config::SettingsService::Get().Update([infiniteParachutes](Config::MenuSettings& settings) { settings.selfInfiniteParachutes = infiniteParachutes; });
+                }
                 if (ImGui::Checkbox("Mobile Radio", &mobileRadio))
+                {
                     status = player.SetMobileRadio(mobileRadio) ? "Mobile Radio updated" : "Mobile Radio rejected";
+                    Config::SettingsService::Get().Update([mobileRadio](Config::MenuSettings& settings) { settings.selfMobileRadio = mobileRadio; });
+                }
             }
 
             if (ImGui::CollapsingHeader("Appearance / Model"))
@@ -334,6 +391,8 @@ namespace TutonesV2::UI
                     status = online.SetMode(requested)
                         ? "Online radar mode updated"
                         : "Online radar mode rejected";
+                    const int savedMode = static_cast<int>(requested);
+                    Config::SettingsService::Get().Update([savedMode](Config::MenuSettings& settings) { settings.selfRadarMode = savedMode; });
                 }
                 ImGui::EndDisabled();
 
@@ -461,11 +520,20 @@ namespace TutonesV2::UI
             bool laserSight = service.LaserSight();
 
             if (ImGui::Checkbox("Infinite Ammo", &infiniteAmmo))
+            {
                 status = service.SetInfiniteAmmo(infiniteAmmo) ? "Infinite Ammo updated" : "Infinite Ammo rejected";
+                Config::SettingsService::Get().Update([infiniteAmmo](Config::MenuSettings& settings) { settings.weaponInfiniteAmmo = infiniteAmmo; });
+            }
             if (ImGui::Checkbox("Infinite Clip", &infiniteClip))
+            {
                 status = service.SetInfiniteClip(infiniteClip) ? "Infinite Clip updated" : "Infinite Clip rejected";
+                Config::SettingsService::Get().Update([infiniteClip](Config::MenuSettings& settings) { settings.weaponInfiniteClip = infiniteClip; });
+            }
             if (ImGui::Checkbox("Explosive Ammo", &explosiveAmmo))
+            {
                 status = service.SetExplosiveAmmo(explosiveAmmo) ? "Explosive Ammo updated" : "Explosive Ammo rejected";
+                Config::SettingsService::Get().Update([explosiveAmmo](Config::MenuSettings& settings) { settings.weaponExplosiveAmmo = explosiveAmmo; });
+            }
 
             ImGui::SeparatorText("Aim Assist");
             ImGui::TextDisabled(
@@ -476,21 +544,33 @@ namespace TutonesV2::UI
 
             ImGui::BeginDisabled(!service.AimbotSupported());
             if (ImGui::Checkbox("Aimbot", &aimbot))
+            {
                 status = service.SetAimbot(aimbot) ? "Aimbot updated" : "Aimbot rejected";
+                Config::SettingsService::Get().Update([aimbot](Config::MenuSettings& settings) { settings.weaponAimbot = aimbot; });
+            }
             ImGui::EndDisabled();
 
             ImGui::BeginDisabled(!aimbot || !service.AimForHeadSupported());
             if (ImGui::Checkbox("Aim For Head", &aimForHead))
+            {
                 status = service.SetAimForHead(aimForHead) ? "Aim For Head updated" : "Aim For Head rejected";
+                Config::SettingsService::Get().Update([aimForHead](Config::MenuSettings& settings) { settings.weaponAimForHead = aimForHead; });
+            }
             ImGui::EndDisabled();
 
             ImGui::BeginDisabled(!aimbot || !service.TargetDriversSupported());
             if (ImGui::Checkbox("Target Drivers", &targetDrivers))
+            {
                 status = service.SetTargetDrivers(targetDrivers) ? "Target Drivers updated" : "Target Drivers rejected";
+                Config::SettingsService::Get().Update([targetDrivers](Config::MenuSettings& settings) { settings.weaponTargetDrivers = targetDrivers; });
+            }
             ImGui::EndDisabled();
 
             if (ImGui::Checkbox("Laser Sight (Native)", &laserSight))
+            {
                 status = service.SetLaserSight(laserSight) ? "Native Laser Sight updated" : "Native Laser Sight rejected";
+                Config::SettingsService::Get().Update([laserSight](Config::MenuSettings& settings) { settings.weaponLaserSight = laserSight; });
+            }
             ImGui::TextDisabled("Uses ENABLE_LASER_SIGHT_RENDERING");
 
             ImGui::SeparatorText("Weapon Utilities");
@@ -576,11 +656,20 @@ namespace TutonesV2::UI
             bool hornBoost = service.HornBoost();
 
             if (ImGui::Checkbox("Vehicle God Mode", &vehicleGodMode))
+            {
                 static_cast<void>(service.SetVehicleGodMode(vehicleGodMode));
+                Config::SettingsService::Get().Update([vehicleGodMode](Config::MenuSettings& settings) { settings.vehicleGodMode = vehicleGodMode; });
+            }
             if (ImGui::Checkbox("Keep Vehicle Clean", &keepVehicleClean))
+            {
                 static_cast<void>(service.SetKeepVehicleClean(keepVehicleClean));
+                Config::SettingsService::Get().Update([keepVehicleClean](Config::MenuSettings& settings) { settings.vehicleKeepClean = keepVehicleClean; });
+            }
             if (ImGui::Checkbox("Horn Boost", &hornBoost))
+            {
                 static_cast<void>(service.SetHornBoost(hornBoost));
+                Config::SettingsService::Get().Update([hornBoost](Config::MenuSettings& settings) { settings.vehicleHornBoost = hornBoost; });
+            }
 
             if (ImGui::Button("Repair Current"))
                 static_cast<void>(service.QueueRepairCurrent());
@@ -633,7 +722,10 @@ namespace TutonesV2::UI
             bool autoWaypoint = snapshot.autoWaypointEnabled;
             ImGui::BeginDisabled(!service.IsReady() || !nativeReady);
             if (ImGui::Checkbox("Auto Teleport to Waypoint", &autoWaypoint))
+            {
                 service.SetAutoWaypoint(autoWaypoint);
+                Config::SettingsService::Get().Update([autoWaypoint](Config::MenuSettings& settings) { settings.teleportAutoWaypoint = autoWaypoint; });
+            }
             ImGui::EndDisabled();
 
             ImGui::SeparatorText("Directional Teleport");
@@ -729,8 +821,10 @@ namespace TutonesV2::UI
                     radarModes.data(),
                     static_cast<int>(radarModes.size())))
             {
-                static_cast<void>(selfOnline.SetMode(
-                    static_cast<Features::Player::RadarMode>(std::clamp(radarMode, 0, 2))));
+                const auto requested = static_cast<Features::Player::RadarMode>(std::clamp(radarMode, 0, 2));
+                static_cast<void>(selfOnline.SetMode(requested));
+                const int savedMode = static_cast<int>(requested);
+                Config::SettingsService::Get().Update([savedMode](Config::MenuSettings& settings) { settings.selfRadarMode = savedMode; });
             }
             ImGui::EndDisabled();
 
@@ -779,7 +873,10 @@ namespace TutonesV2::UI
 
             bool freezeClock = state.freezeClock;
             if (ImGui::Checkbox("Freeze Time", &freezeClock))
+            {
                 static_cast<void>(service.SetFreezeClock(freezeClock));
+                Config::SettingsService::Get().Update([freezeClock](Config::MenuSettings& settings) { settings.worldFreezeClock = freezeClock; });
+            }
 
             if (state.clockHour >= 0 && state.clockMinute >= 0)
                 ImGui::TextDisabled("Observed GTA clock: %02d:%02d", state.clockHour, state.clockMinute);
@@ -802,7 +899,10 @@ namespace TutonesV2::UI
 
             bool blackout = state.blackout;
             if (ImGui::Checkbox("Blackout", &blackout))
+            {
                 static_cast<void>(service.QueueBlackout(blackout));
+                Config::SettingsService::Get().Update([blackout](Config::MenuSettings& settings) { settings.worldBlackout = blackout; });
+            }
 
             ImGui::SeparatorText("Population Density");
             float pedDensity = state.pedDensity;
@@ -812,15 +912,30 @@ namespace TutonesV2::UI
             float parkedDensity = state.parkedVehicleDensity;
 
             if (ImGui::SliderFloat("Ambient Peds", &pedDensity, 0.0f, 1.0f, "%.2f"))
+            {
                 service.SetPedDensity(pedDensity);
+                Config::SettingsService::Get().Update([pedDensity](Config::MenuSettings& settings) { settings.worldPedDensity = pedDensity; });
+            }
             if (ImGui::SliderFloat("Scenario Peds", &scenarioDensity, 0.0f, 1.0f, "%.2f"))
+            {
                 service.SetScenarioPedDensity(scenarioDensity);
+                Config::SettingsService::Get().Update([scenarioDensity](Config::MenuSettings& settings) { settings.worldScenarioPedDensity = scenarioDensity; });
+            }
             if (ImGui::SliderFloat("Traffic", &vehicleDensity, 0.0f, 1.0f, "%.2f"))
+            {
                 service.SetVehicleDensity(vehicleDensity);
+                Config::SettingsService::Get().Update([vehicleDensity](Config::MenuSettings& settings) { settings.worldVehicleDensity = vehicleDensity; });
+            }
             if (ImGui::SliderFloat("Random Traffic", &randomVehicleDensity, 0.0f, 1.0f, "%.2f"))
+            {
                 service.SetRandomVehicleDensity(randomVehicleDensity);
+                Config::SettingsService::Get().Update([randomVehicleDensity](Config::MenuSettings& settings) { settings.worldRandomVehicleDensity = randomVehicleDensity; });
+            }
             if (ImGui::SliderFloat("Parked Vehicles", &parkedDensity, 0.0f, 1.0f, "%.2f"))
+            {
                 service.SetParkedVehicleDensity(parkedDensity);
+                Config::SettingsService::Get().Update([parkedDensity](Config::MenuSettings& settings) { settings.worldParkedVehicleDensity = parkedDensity; });
+            }
 
             if (ImGui::Button("Normal Density"))
                 service.ResetDensity();
