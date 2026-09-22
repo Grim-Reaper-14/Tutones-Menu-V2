@@ -69,7 +69,7 @@ namespace TutonesV2::Config
 
         void Clamp(MenuSettings& settings) noexcept
         {
-            settings.selectedPage = std::clamp(settings.selectedPage, 0, 8);
+            settings.selectedPage = std::clamp(settings.selectedPage, 0, 11);
             settings.opacity = std::clamp(settings.opacity, 0.70f, 1.0f);
             settings.scale = std::clamp(settings.scale, 0.85f, 1.35f);
 

@@ -10,12 +10,15 @@ namespace TutonesV2::UI
         Self,
         Weapons,
         Vehicle,
-        Teleport,
-        World,
-        Recovery,
-        Settings,
         Online,
+        World,
+        Business,
+        Recovery,
+        Protections,
+        Settings,
         Misc,
+        Tools,
+        Heists,
     };
 
     struct MenuPageDescriptor final
@@ -24,16 +27,19 @@ namespace TutonesV2::UI
         const char* Label;
     };
 
-    inline constexpr std::array<MenuPageDescriptor, 9> MenuPages{{
+    inline constexpr std::array<MenuPageDescriptor, 12> MenuPages{{
         {MenuPage::Self, "Self"},
         {MenuPage::Weapons, "Weapons"},
-        {MenuPage::Vehicle, "Vehicle"},
+        {MenuPage::Vehicle, "Vehicles"},
         {MenuPage::Online, "Online"},
-        {MenuPage::Teleport, "Teleport"},
         {MenuPage::World, "World"},
+        {MenuPage::Business, "Businesses"},
         {MenuPage::Recovery, "Recovery"},
-        {MenuPage::Misc, "Misc"},
+        {MenuPage::Protections, "Protections"},
         {MenuPage::Settings, "Settings"},
+        {MenuPage::Misc, "Utilities"},
+        {MenuPage::Tools, "Tools"},
+        {MenuPage::Heists, "Heists"},
     }};
 
     [[nodiscard]] inline const char* MenuPageName(MenuPage page) noexcept
@@ -42,13 +48,16 @@ namespace TutonesV2::UI
         {
         case MenuPage::Self: return "Self";
         case MenuPage::Weapons: return "Weapons";
-        case MenuPage::Vehicle: return "Vehicle";
-        case MenuPage::Teleport: return "Teleport";
-        case MenuPage::World: return "World";
-        case MenuPage::Recovery: return "Recovery";
-        case MenuPage::Settings: return "Settings";
+        case MenuPage::Vehicle: return "Vehicles";
         case MenuPage::Online: return "Online";
-        case MenuPage::Misc: return "Misc";
+        case MenuPage::World: return "World";
+        case MenuPage::Business: return "Businesses";
+        case MenuPage::Recovery: return "Recovery";
+        case MenuPage::Protections: return "Protections";
+        case MenuPage::Settings: return "Settings";
+        case MenuPage::Misc: return "Utilities";
+        case MenuPage::Tools: return "Tools";
+        case MenuPage::Heists: return "Heists";
         }
 
         return "Self";
