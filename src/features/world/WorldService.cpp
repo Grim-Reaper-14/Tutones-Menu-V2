@@ -413,6 +413,75 @@ namespace TutonesV2::Features::World
         });
     }
 
+    void WorldService::RestoreSavedState(
+        bool freezeClock,
+        bool blackout,
+        bool weatherOverride,
+        int weatherIndex,
+        float pedDensity,
+        float scenarioPedDensity,
+        float vehicleDensity,
+        float randomVehicleDensity,
+        float parkedVehicleDensity,
+        int hour,
+        int minute) noexcept
+    {
+        if (!IsReady())
+            return;
+
+        m_SelectedHour.store(std::clamp(hour, 0, 23), std::memory_order_release);
+        m_SelectedMinute.store(std::clamp(minute, 0, 59), std::memory_order_release);
+        m_WeatherIndex.store(
+            std::clamp(weatherIndex, 0, static_cast<int>(WeatherCodes.size()) - 1),
+            std::memory_order_release);
+        m_FreezeClock.store(freezeClock, std::memory_order_release);
+        m_Blackout.store(blackout, std::memory_order_release);
+        m_WeatherOverride.store(weatherOverride, std::memory_order_release);
+        m_PedDensity.store(ClampDensity(pedDensity), std::memory_order_release);
+        m_ScenarioPedDensity.store(ClampDensity(scenarioPedDensity), std::memory_order_release);
+        m_VehicleDensity.store(ClampDensity(vehicleDensity), std::memory_order_release);
+        m_RandomVehicleDensity.store(ClampDensity(randomVehicleDensity), std::memory_order_release);
+        m_ParkedVehicleDensity.store(ClampDensity(parkedVehicleDensity), std::memory_order_release);
+
+        static_cast<void>(GameRuntimeEnqueue([this] {
+            if (m_FreezeClock.load(std::memory_order_acquire))
+            {
+                static_cast<void>(NativeInvoker::InvokeVoid(
+                    NativeId::NetworkOverrideClockTime,
+                    m_SelectedHour.load(std::memory_order_acquire),
+                    m_SelectedMinute.load(std::memory_order_acquire),
+                    0));
+            }
+            else
+            {
+                static_cast<void>(NativeInvoker::InvokeVoid(NativeId::NetworkClearClockTimeOverride));
+            }
+
+            if (m_WeatherOverride.load(std::memory_order_acquire))
+            {
+                const int index = std::clamp(
+                    m_WeatherIndex.load(std::memory_order_acquire),
+                    0,
+                    static_cast<int>(WeatherCodes.size()) - 1);
+                const char* weather = WeatherCodes[static_cast<std::size_t>(index)];
+                static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetWeatherTypePersist, weather));
+                static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetWeatherTypeNowPersist, weather));
+                static_cast<void>(NativeInvoker::InvokeVoid(NativeId::SetOverrideWeather, weather));
+            }
+            else
+            {
+                static_cast<void>(NativeInvoker::InvokeVoid(NativeId::ClearOverrideWeather));
+            }
+
+            static_cast<void>(NativeInvoker::InvokeVoid(
+                NativeId::SetArtificialLightsState,
+                std::int32_t{m_Blackout.load(std::memory_order_acquire) ? 1 : 0}));
+        }));
+
+        EnsureDensityLoop();
+        EnsureWorldLoop();
+    }
+
     void WorldService::RequestClockSample() noexcept
     {
         if (!IsReady())

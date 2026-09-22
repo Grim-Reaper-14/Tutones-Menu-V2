@@ -67,6 +67,19 @@ namespace TutonesV2::Features::World
         bool QueueClearObjects(float radius) noexcept;
         bool QueueClearAmbient(float radius) noexcept;
 
+        void RestoreSavedState(
+            bool freezeClock,
+            bool blackout,
+            bool weatherOverride,
+            int weatherIndex,
+            float pedDensity,
+            float scenarioPedDensity,
+            float vehicleDensity,
+            float randomVehicleDensity,
+            float parkedVehicleDensity,
+            int hour,
+            int minute) noexcept;
+
         void RequestClockSample() noexcept;
 
     private:
