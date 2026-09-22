@@ -400,5 +400,4 @@ namespace TutonesV2::Features::Parity
         m_Pending.store(false, std::memory_order_release);
     }
 
-    template bool ParityGlobalsService::QueueImpl<std::function<void()>>(std::function<void()>&&);
 }
