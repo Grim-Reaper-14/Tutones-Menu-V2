@@ -9,6 +9,7 @@
 #include "../../game/script/ScriptRuntime.hpp"
 
 #include <cstdint>
+#include <utility>
 
 namespace TutonesV2::Features::Online
 {
