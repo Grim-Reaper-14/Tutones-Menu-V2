@@ -10,6 +10,7 @@
 #include "../features/player/SelfOnlineService.hpp"
 #include "../features/protection/ProtectionService.hpp"
 #include "../features/online/OnlineStatusService.hpp"
+#include "../features/online/OnlineSessionService.hpp"
 #include "../features/online/OnlinePlayerService.hpp"
 #include "../features/online/RequestServicesService.hpp"
 #include "../features/parity/ParityGlobalsService.hpp"
@@ -1215,6 +1216,7 @@ namespace TutonesV2::UI
         void RenderOnline() noexcept
         {
             auto& statusService = Features::Online::OnlineStatusService::Get();
+            auto& sessionService = Features::Online::OnlineSessionService::Get();
             auto& selfOnline = Features::Player::SelfOnlineService::Get();
 
             statusService.RequestRefresh();
@@ -1234,6 +1236,71 @@ namespace TutonesV2::UI
             if (status.networkTimeReady)
                 ImGui::BulletText("Network time value: %u", status.networkTime);
             ImGui::TextDisabled("%s", status.message.c_str());
+
+            ImGui::SeparatorText("Session Switcher");
+            const auto sessionState = sessionService.Snapshot();
+            static int selectedSessionIndex = 0;
+            selectedSessionIndex = std::clamp(
+                selectedSessionIndex,
+                0,
+                static_cast<int>(Features::Online::OnlineJoinTypes.size()) - 1);
+
+            const auto& selectedSession =
+                Features::Online::OnlineJoinTypes[static_cast<std::size_t>(selectedSessionIndex)];
+
+            ImGui::BeginDisabled(
+                !Game::GameRuntime::Get().NativeReady()
+                || !sessionService.IsReady()
+                || !sessionState.supported
+                || sessionState.pending);
+
+            ImGui::SetNextItemWidth(250.0f);
+            if (ImGui::BeginCombo("Session Type", selectedSession.label))
+            {
+                for (std::size_t index = 0; index < Features::Online::OnlineJoinTypes.size(); ++index)
+                {
+                    const bool selected =
+                        selectedSessionIndex == static_cast<int>(index);
+                    if (ImGui::Selectable(
+                            Features::Online::OnlineJoinTypes[index].label,
+                            selected))
+                    {
+                        selectedSessionIndex = static_cast<int>(index);
+                    }
+                    if (selected)
+                        ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+
+            if (ImGui::Button("Join Selected Session", ImVec2(250.0f, 0.0f)))
+            {
+                static_cast<void>(
+                    sessionService.QueueJoin(
+                        Features::Online::OnlineJoinTypes[
+                            static_cast<std::size_t>(selectedSessionIndex)].value));
+            }
+
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!status.sessionStarted);
+            if (ImGui::Button("Leave Online", ImVec2(-1.0f, 0.0f)))
+                static_cast<void>(sessionService.QueueLeaveOnline());
+            ImGui::EndDisabled();
+
+            ImGui::EndDisabled();
+
+            if (!sessionState.supported)
+            {
+                ImGui::TextDisabled(
+                    "Session switching is waiting for optional ScriptPrograms / ScriptVM pointers.");
+            }
+            else
+            {
+                ImGui::TextDisabled(
+                    "shop_controller: %s",
+                    sessionState.shopControllerReady ? "READY" : "checked when action runs");
+            }
+            ImGui::TextDisabled("%s", sessionState.message.c_str());
 
             ImGui::SeparatorText("Player State");
             int radarMode = static_cast<int>(selfOnline.Mode());
@@ -1403,10 +1470,10 @@ namespace TutonesV2::UI
 
             ImGui::TextDisabled("%s", requestState.message.c_str());
 
-            ImGui::SeparatorText("V1 Expansion");
+            ImGui::SeparatorText("Online Backend");
             ImGui::TextWrapped(
-                "The V1 player roster/session actions are being moved to the V2 scheduler next; "
-                "service requests and local Online state are already active here.");
+                "V1 Online session switching, player roster actions, service requests, "
+                "Off Radar and Ghost Organization are wired through the V2 scheduler.");
         }
 
         void RenderWorld() noexcept
