@@ -60,6 +60,23 @@ namespace TutonesV2::Game::Script
         return nullptr;
     }
 
+    Types::ScriptProgram* ScriptRuntime::FindProgram(std::uint32_t scriptHash) const noexcept
+    {
+        std::scoped_lock lock(m_Mutex);
+        auto** programs = Native::NativePointers::Get().ScriptPrograms();
+        if (!programs)
+            return nullptr;
+
+        for (std::size_t index = 0; index < ScriptProgramCount; ++index)
+        {
+            auto* program = programs[index];
+            if (program && (program->hash == scriptHash || program->nameHash == scriptHash))
+                return program;
+        }
+
+        return nullptr;
+    }
+
     std::vector<ScriptThreadSnapshot> ScriptRuntime::ThreadsSnapshot() const
     {
         std::vector<ScriptThreadSnapshot> result;
@@ -133,5 +150,10 @@ namespace TutonesV2::Game::Script
     std::int64_t** ScriptRuntime::Globals() const noexcept
     {
         return Native::NativePointers::Get().ScriptGlobals();
+    }
+
+    ScriptVmFn ScriptRuntime::ScriptVm() const noexcept
+    {
+        return Native::NativePointers::Get().ScriptVm();
     }
 }
