@@ -45,6 +45,13 @@ namespace TutonesV2::Game::Script
         Types::ScriptThreadContext context = thread->context;
         const auto topStack = context.stackPointer;
 
+        const std::size_t neededSlots = args.size() + 1;
+        if (context.stackPointer > context.stackSize
+            || neededSlots > static_cast<std::size_t>(context.stackSize - context.stackPointer))
+        {
+            return false;
+        }
+
         for (const auto arg : args) stack[context.stackPointer++] = arg;
         stack[context.stackPointer++] = 0;
         context.programCounter = m_ProgramCounter;
