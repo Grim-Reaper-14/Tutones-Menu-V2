@@ -94,6 +94,35 @@ namespace TutonesV2::Game::Native
             Core::Logger::Get().Warn("native.ptr", "ScriptGlobals pattern was not found; Online Self globals disabled");
         }
 
+        constexpr auto scriptProgramsPattern = "48 C7 84 C8 D8 00 00 00 00 00 00 00";
+        if (auto* match = Memory::PatternScanner::FindFirst(m_Module, scriptProgramsPattern))
+        {
+            auto* base = Memory::PatternScanner::ResolveRip(match + 0x16);
+            auto* address = base ? base + 0xD8 : nullptr;
+            if (address && m_Module.Contains(address))
+                m_ScriptPrograms = reinterpret_cast<Types::ScriptProgram**>(address);
+            else
+                Core::Logger::Get().Warn("native.ptr", "ScriptPrograms resolved outside GTA module image");
+        }
+        else
+        {
+            Core::Logger::Get().Warn("native.ptr", "ScriptPrograms pattern was not found; Online session switching disabled");
+        }
+
+        constexpr auto scriptVmPattern = "49 63 41 1C";
+        if (auto* match = Memory::PatternScanner::FindFirst(m_Module, scriptVmPattern))
+        {
+            auto* address = match - 0x24;
+            if (m_Module.Contains(address))
+                m_ScriptVm = reinterpret_cast<ScriptVmFn>(address);
+            else
+                Core::Logger::Get().Warn("native.ptr", "ScriptVM resolved outside GTA module image");
+        }
+        else
+        {
+            Core::Logger::Get().Warn("native.ptr", "ScriptVM pattern was not found; Online session switching disabled");
+        }
+
         constexpr auto sessionStartedPattern = "0F B6 05 ? ? ? ? 0A 05 ? ? ? ? 75 2A";
         if (auto* match = Memory::PatternScanner::FindFirst(m_Module, sessionStartedPattern))
         {
@@ -139,7 +168,9 @@ namespace TutonesV2::Game::Native
         m_InitNativeTables = nullptr;
         m_RunScriptThreads = nullptr;
         m_ScriptThreads = nullptr;
+        m_ScriptPrograms = nullptr;
         m_ScriptGlobals = nullptr;
+        m_ScriptVm = nullptr;
         m_IsSessionStarted = nullptr;
         m_NetworkTime = nullptr;
         m_Module.Reset();
@@ -165,9 +196,19 @@ namespace TutonesV2::Game::Native
         return m_ScriptThreads;
     }
 
+    Types::ScriptProgram** NativePointers::ScriptPrograms() const noexcept
+    {
+        return m_ScriptPrograms;
+    }
+
     std::int64_t** NativePointers::ScriptGlobals() const noexcept
     {
         return m_ScriptGlobals;
+    }
+
+    ScriptVmFn NativePointers::ScriptVm() const noexcept
+    {
+        return m_ScriptVm;
     }
 
     bool* NativePointers::IsSessionStarted() const noexcept
