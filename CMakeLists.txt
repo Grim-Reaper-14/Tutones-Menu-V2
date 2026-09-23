@@ -55,10 +55,13 @@ add_library(Tutones-Menu-V2 SHARED
     src/game/native/NativePointers.cpp
     src/game/native/NativeRegistry.cpp
     src/game/script/ScriptRuntime.cpp
+    src/game/script/ScriptPointer.cpp
+    src/game/script/ScriptFunction.cpp
     src/features/player/PlayerService.cpp
     src/features/player/SelfOnlineService.cpp
     src/features/player/PlayerStatsService.cpp
     src/features/online/OnlineStatusService.cpp
+    src/features/online/OnlineSessionService.cpp
     src/features/parity/ParityGlobalsService.cpp
     src/features/online/OnlinePlayerService.cpp
     src/features/utility/UtilityService.cpp
