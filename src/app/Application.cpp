@@ -9,6 +9,7 @@
 #include "../features/player/SelfOnlineService.hpp"
 #include "../features/protection/ProtectionService.hpp"
 #include "../features/online/OnlineStatusService.hpp"
+#include "../features/online/OnlineSessionService.hpp"
 #include "../features/online/OnlinePlayerService.hpp"
 #include "../features/utility/UtilityService.hpp"
 #include "../features/vehicle/VehicleService.hpp"
@@ -78,6 +79,7 @@ namespace TutonesV2::App
             || !Features::Player::SelfOnlineService::Get().Initialize()
             || !Features::Player::PlayerStatsService::Get().Initialize()
             || !Features::Online::OnlineStatusService::Get().Initialize()
+            || !Features::Online::OnlineSessionService::Get().Initialize()
             || !Features::Online::OnlinePlayerService::Get().Initialize()
             || !Features::Utility::UtilityService::Get().Initialize()
             || !Features::Weapon::WeaponService::Get().Initialize()
@@ -121,6 +123,7 @@ namespace TutonesV2::App
         Features::Weapon::WeaponService::Get().Shutdown();
         Features::Utility::UtilityService::Get().Shutdown();
         Features::Online::OnlinePlayerService::Get().Shutdown();
+        Features::Online::OnlineSessionService::Get().Shutdown();
         Features::Online::OnlineStatusService::Get().Shutdown();
         Features::Player::PlayerStatsService::Get().Shutdown();
         Features::Player::SelfOnlineService::Get().Shutdown();
